@@ -17,18 +17,20 @@ const ART_CHARACTERS = ["dragon", "automaton", "mascot"];
 
 // Every file the renderer knows how to use, with its required pixel size and
 // whether it may be transparent. The ART-BRIEF test checks the brief lists
-// each one.
+// each one. Opaque art is JPEG (a painted card is ~1 MB as PNG, ~100 KB as
+// JPEG); only art that needs transparency is PNG.
 const ASSET_SPECS = [
   { file: "assets/logo/logo.png", w: 1200, h: 600, alpha: true, use: "splash title" },
-  ...ART_TABLES.map((t) => ({ file: `assets/world-cards/${t}.png`, w: 720, h: 480, alpha: false, use: "world card in the book" })),
-  ...ART_TABLES.map((t) => ({ file: `assets/table-backgrounds/${t}.png`, w: 800, h: 1440, alpha: false, use: "layer 1+2: base material and scenery under the playfield" })),
+  ...ART_TABLES.map((t) => ({ file: `assets/world-cards/${t}.jpg`, w: 720, h: 480, alpha: false, use: "world card in the book" })),
+  ...ART_TABLES.map((t) => ({ file: `assets/table-backgrounds/${t}.jpg`, w: 800, h: 1440, alpha: false, use: "layer 1+2: base material and scenery under the playfield" })),
   ...ART_TABLES.map((t) => ({ file: `assets/table-foregrounds/${t}.png`, w: 800, h: 1440, alpha: true, use: "layer 6: frame/occlusion over everything outside the safe region" })),
   { file: "assets/characters/dragon.png", w: 240, h: 140, alpha: true, use: "castle toy, asleep" },
   { file: "assets/characters/dragon-awake.png", w: 240, h: 140, alpha: true, use: "castle toy, awake" },
   { file: "assets/characters/automaton.png", w: 80, h: 120, alpha: true, use: "workshop toy, run down" },
   { file: "assets/characters/automaton-awake.png", w: 80, h: 120, alpha: true, use: "workshop toy, marching" },
-  { file: "assets/characters/mascot.png", w: 400, h: 400, alpha: true, use: "splash mascot" },
-  { file: "assets/ui/paper.png", w: 512, h: 512, alpha: false, use: "tileable paper texture behind menus" },
+  ...ART_TABLES.map((t) => ({ file: `assets/characters/mascot-${t}.png`, w: 400, h: 400, alpha: true, use: "results mascot for this world" })),
+  { file: "assets/characters/mascot.png", w: 400, h: 400, alpha: true, use: "results mascot fallback for any world without its own" },
+  { file: "assets/ui/paper.jpg", w: 512, h: 512, alpha: false, use: "tileable paper texture behind menus" },
 ];
 
 const Assets = {
@@ -59,9 +61,10 @@ const Assets = {
   // An image that has finished loading, or null — callers draw their
   // procedural fallback on null.
   get(file) { return this.imgs[file] || null; },
-  background(id) { return this.get(`assets/table-backgrounds/${id}.png`); },
+  background(id) { return this.get(`assets/table-backgrounds/${id}.jpg`); },
   foreground(id) { return this.get(`assets/table-foregrounds/${id}.png`); },
-  worldCard(id) { return this.get(`assets/world-cards/${id}.png`); },
+  worldCard(id) { return this.get(`assets/world-cards/${id}.jpg`); },
+  mascot(id) { return this.get(`assets/characters/mascot-${id}.png`) || this.get("assets/characters/mascot.png"); },
   character(look, awake) { return (awake && this.get(`assets/characters/${look}-awake.png`)) || this.get(`assets/characters/${look}.png`); },
 
   onChange(fn) { this.listeners.push(fn); },

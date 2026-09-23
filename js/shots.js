@@ -22,7 +22,11 @@
   Storage.getProgress = (id) => (id === player.id ? structuredClone(prog) : realGet(id));
   GK.Profiles.lastProfile = () => player;
   Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
-  const done = () => { document.body.dataset.shotReady = "1"; };
+  // ready only once the optional art has finished loading, so captures show it
+  const done = () => {
+    const mark = () => { document.body.dataset.shotReady = "1"; };
+    if (Assets.loaded) mark(); else Assets.onChange(() => { if (Assets.loaded) mark(); });
+  };
 
   // A tiny deterministic flipper for play captures: flip when the ball is
   // over a flipper and falling. Enough to put the table in a lively state.

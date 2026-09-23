@@ -1,11 +1,16 @@
 {
   "files": [
     "assets/logo/logo.png",
-    "assets/world-cards/castle.png",
-    "assets/world-cards/temple.png",
-    "assets/world-cards/sea.png",
-    "assets/world-cards/workshop.png",
-    "assets/world-cards/clouds.png",
+    "assets/world-cards/castle.jpg",
+    "assets/world-cards/temple.jpg",
+    "assets/world-cards/sea.jpg",
+    "assets/world-cards/workshop.jpg",
+    "assets/world-cards/clouds.jpg",
+    "assets/characters/mascot-castle.png",
+    "assets/characters/mascot-temple.png",
+    "assets/characters/mascot-sea.png",
+    "assets/characters/mascot-workshop.png",
+    "assets/characters/mascot-clouds.png",
     "assets/characters/mascot.png"
   ]
 }

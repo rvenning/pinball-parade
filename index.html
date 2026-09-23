@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="gk-version" content="3" data-date="2026-09-24" data-kit="1.10.1">
+<meta name="gk-version" content="4" data-date="2026-09-24" data-kit="1.10.1">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Pinball Parade — Let the story roll</title>
 <link rel="manifest" href="manifest.json">
@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Cinzel+Decorative:wght@700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="lib/gk-base.css">
-<link rel="stylesheet" href="css/style.css?v=3">
+<link rel="stylesheet" href="css/style.css">
 <link rel="icon" href="icons/icon-192.png">
 </head>
 <body>
@@ -101,7 +101,8 @@
 <!-- Results -->
 <div class="screen" id="screen-results">
   <div class="res-inner">
-    <div class="res-mascot" aria-hidden="true" style="width:116px;height:104px;margin:-8px auto -3px"><img src="assets/characters/mascot.png" alt="" width="116" height="104" style="width:100%;height:100%;object-fit:contain"></div>
+    <!-- filled from the asset loader with this world's mascot; stays empty (and hidden) without art -->
+    <div class="res-mascot" id="res-mascot" aria-hidden="true"></div>
     <div class="res-kicker" id="res-kicker"></div>
     <h2 class="res-title" id="res-title"></h2>
     <div class="res-stars" id="res-stars"></div>

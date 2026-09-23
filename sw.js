@@ -1,6 +1,6 @@
 // Pinball Parade service worker — network-first, cache fallback.
 // Bump with `node lib/tools/stamp-version.js . --bump`, never by hand.
-const CACHE = "pinball-parade-v3";
+const CACHE = "pinball-parade-v4";
 const SHELL = [
   ".",
   "index.html",
@@ -27,17 +27,22 @@ const SHELL = [
   "js/input.js",
   "js/main.js",
   "assets/available.json",
-  "assets/logo/logo.png",
-  "assets/world-cards/castle.png",
-  "assets/world-cards/temple.png",
-  "assets/world-cards/sea.png",
-  "assets/world-cards/workshop.png",
-  "assets/world-cards/clouds.png",
-  "assets/characters/mascot.png",
   "icons/icon-192.png",
   "icons/icon-512.png",
   "icons/maskable-512.png",
 ];
+
+// The shell is what the game needs to run, and addAll() is all-or-nothing:
+// one failed request and the whole install fails, so offline play never
+// arrives. Illustrated art is optional (the game draws everything without
+// it), so it is NOT in the shell: after install, whatever assets/available.json
+// lists is cached one file at a time, and a file that fails is simply skipped.
+function cacheArt(cache) {
+  return fetch("assets/available.json", { cache: "no-cache" })
+    .then((r) => (r.ok ? r.json() : { files: [] }))
+    .then((j) => Promise.allSettled((j.files || []).map((f) => cache.add(f))))
+    .catch(() => {});
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -48,6 +53,7 @@ self.addEventListener("activate", (event) => {
     caches.keys()
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
+      .then(() => caches.open(CACHE).then(cacheArt))
   );
 });
 

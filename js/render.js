@@ -2,7 +2,7 @@
 // explicit layers so an illustration pass can replace the decoration without
 // touching anything the player reads:
 //
-//   1 bg       base material (table-backgrounds/<id>.png, else painted felt)
+//   1 bg       base material (table-backgrounds/<id>.jpg, else painted felt)
 //   2 scenery  non-interactive motif + story characters (characters/*.png)
 //   3 rails    walls, slings, posts, gates, ramps, flippers — always code
 //   4 mech     bumpers, targets, drops, lanes, spinners, saucers, kickback

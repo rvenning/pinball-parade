@@ -118,6 +118,13 @@ h1, h2, h3 { font-weight: 800; }
 .world-card.locked { opacity: .55; cursor: not-allowed; filter: grayscale(.4); }
 .wc-art { display: block; background: #0b1226; }
 .wc-art canvas, .wc-art img { display: block; width: 150px; height: 110px; object-fit: cover; }
+/* One column always: gk-base caps .content at 560px, so two columns would be
+   ~270px cards on an iPad. Wide screens get a bigger picture instead, at the
+   card art's own 3:2. */
+@media (min-width: 560px) {
+  .world-card { grid-template-columns: 216px minmax(0, 1fr); min-height: 144px; }
+  .wc-art canvas, .wc-art img { width: 216px; height: 144px; }
+}
 .wc-body { display: flex; flex-direction: column; justify-content: center; padding: 10px 14px; gap: 1px; }
 .wc-n { font-size: 13px; font-weight: 800; color: var(--brass-lite); text-transform: uppercase; letter-spacing: .08em; }
 .wc-name { font-size: 20px; font-weight: 800; color: var(--cream); line-height: 1.15; }

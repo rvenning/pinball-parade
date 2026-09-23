@@ -296,3 +296,17 @@ test("the art brief lists every asset the renderer can load, at its real size", 
   }
   assert.deepStrictEqual(fails, []);
 });
+
+test("the service worker's install never depends on optional art", () => {
+  // addAll() is all-or-nothing: one failed image in the shell and the game
+  // never becomes available offline. Art is cached afterwards, best effort.
+  const fs = require("node:fs"), path = require("node:path");
+  const sw = fs.readFileSync(path.join(__dirname, "..", "sw.js"), "utf8");
+  const shell = sw.slice(sw.indexOf("const SHELL = ["), sw.indexOf("];", sw.indexOf("const SHELL = [")));
+  const art = [...shell.matchAll(/"(assets\/[^"]+)"/g)].map((m) => m[1]).filter((f) => f !== "assets/available.json");
+  assert.deepStrictEqual(art, [], "art in the install shell");
+  assert.match(sw, /allSettled/, "art is cached one file at a time after install");
+  // and every listed art file really exists at its listed path
+  const listed = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "assets", "available.json"), "utf8")).files;
+  for (const f of listed) assert.ok(fs.existsSync(path.join(__dirname, "..", f)), `${f} is listed but missing`);
+});

@@ -12,12 +12,19 @@ illustration is deliberately left for a specialist.
 
 ## 1. How images get into the game
 
-1. Put PNGs in the folders below with **exactly** these names and sizes.
+1. Put files in the folders below with **exactly** these names and sizes.
+   **Opaque art is JPEG, transparent art is PNG** — a painted 720×480 card is
+   about 1 MB as PNG and about 100 KB as JPEG, and the family plays on phones.
+   `node tools/optimise-art.js` makes the game-weight derivatives (JPEG cards,
+   400×400 mascots) from the full-size sources in `../pinball-parade-art-source`
+   using headless Edge's own resampler; keep the sources there, not here.
 2. Run `node tools/scan-assets.js`. It checks every name and pixel size and writes
    `assets/available.json`. Only files listed there are ever requested, so a
    misnamed or wrong-sized image is reported and ignored rather than shipped.
 3. Reload. Anything present replaces its procedural fallback; anything absent
-   keeps it.
+   keeps it. Art is never part of the service worker's install: after install
+   it caches whatever `available.json` lists one file at a time, so a failed
+   image can never stop the game working offline.
 
 No code change is needed for any file in this brief.
 
@@ -43,7 +50,7 @@ The renderer draws, bottom to top:
 
 | # | Layer | Replaceable by | Notes |
 |---|---|---|---|
-| 1 | base material | `table-backgrounds/<id>.png` | opaque, fills the whole 800×1440 |
+| 1 | base material | `table-backgrounds/<id>.jpg` | opaque, fills the whole 800×1440 |
 | 2 | non-interactive scenery | same image, plus `characters/*.png` | the background image replaces the procedural motif entirely |
 | 3 | rails and collision mechanisms | **never** | always code |
 | 4 | interactive targets and objective states | **never** | always code |
@@ -73,16 +80,16 @@ long, thin and brass that could be mistaken for a rail.
 | File | Size (px) | Alpha | Used for |
 |---|---|---|---|
 | `logo/logo.png` | 1200 × 600 | transparent | splash title (replaces the typeset logo) |
-| `world-cards/castle.png` | 720 × 480 | opaque | world card in the book |
-| `world-cards/temple.png` | 720 × 480 | opaque | |
-| `world-cards/sea.png` | 720 × 480 | opaque | |
-| `world-cards/workshop.png` | 720 × 480 | opaque | |
-| `world-cards/clouds.png` | 720 × 480 | opaque | |
-| `table-backgrounds/castle.png` | 800 × 1440 | opaque | layers 1+2 |
-| `table-backgrounds/temple.png` | 800 × 1440 | opaque | |
-| `table-backgrounds/sea.png` | 800 × 1440 | opaque | |
-| `table-backgrounds/workshop.png` | 800 × 1440 | opaque | |
-| `table-backgrounds/clouds.png` | 800 × 1440 | opaque | |
+| `world-cards/castle.jpg` | 720 × 480 | opaque | world card in the book |
+| `world-cards/temple.jpg` | 720 × 480 | opaque | |
+| `world-cards/sea.jpg` | 720 × 480 | opaque | |
+| `world-cards/workshop.jpg` | 720 × 480 | opaque | |
+| `world-cards/clouds.jpg` | 720 × 480 | opaque | |
+| `table-backgrounds/castle.jpg` | 800 × 1440 | opaque | layers 1+2 |
+| `table-backgrounds/temple.jpg` | 800 × 1440 | opaque | |
+| `table-backgrounds/sea.jpg` | 800 × 1440 | opaque | |
+| `table-backgrounds/workshop.jpg` | 800 × 1440 | opaque | |
+| `table-backgrounds/clouds.jpg` | 800 × 1440 | opaque | |
 | `table-foregrounds/castle.png` | 800 × 1440 | transparent | layer 6: cabinet frame outside the safe region |
 | `table-foregrounds/temple.png` | 800 × 1440 | transparent | |
 | `table-foregrounds/sea.png` | 800 × 1440 | transparent | |
@@ -92,8 +99,13 @@ long, thin and brass that could be mistaken for a rail.
 | `characters/dragon-awake.png` | 240 × 140 | transparent | the same box, awake |
 | `characters/automaton.png` | 80 × 120 | transparent | workshop toy, run down; box centred on (58, 300), 40 × 60 |
 | `characters/automaton-awake.png` | 80 × 120 | transparent | marching |
-| `characters/mascot.png` | 400 × 400 | transparent | splash mascot (reserved) |
-| `ui/paper.png` | 512 × 512 | opaque, tileable | menu paper texture (reserved) |
+| `characters/mascot-castle.png` | 400 × 400 | transparent | results screen after a castle game |
+| `characters/mascot-temple.png` | 400 × 400 | transparent | results after the temple |
+| `characters/mascot-sea.png` | 400 × 400 | transparent | results after the deep sea |
+| `characters/mascot-workshop.png` | 400 × 400 | transparent | results after the workshop |
+| `characters/mascot-clouds.png` | 400 × 400 | transparent | results after the clouds |
+| `characters/mascot.png` | 400 × 400 | transparent | results fallback for a world without its own mascot |
+| `ui/paper.jpg` | 512 × 512 | opaque, tileable | menu paper texture (reserved) |
 
 Characters sit on layer 2, under every rail and target: the dragon's box overlaps
 the two dragon targets at logical y 166–178, which are always drawn on top.

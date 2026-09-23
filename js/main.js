@@ -190,7 +190,11 @@ const App = {
     Input.onPause = () => (Play.paused ? Play.resume() : Play.pause());
     document.addEventListener("visibilitychange", () => { if (document.hidden) Play.pause(); });
     Assets.init();
-    Assets.onChange(() => { if (GK.UI.screen === "book") this.showBook(); this.applyLogo(); });
+    Assets.onChange(() => {
+      if (GK.UI.screen === "book") this.showBook();
+      if (GK.UI.screen === "results") this.fillMascot();
+      this.applyLogo();
+    });
 
     const shot = new URLSearchParams(location.search).get("shot");
     GK.Debug.init({ storage: Storage, title: "PINBALL PARADE" })
@@ -419,6 +423,8 @@ const App = {
     const title = this.el("res-title"), note = this.el("res-note"), next = this.el("res-next"), again = this.el("res-again");
     this.el("res-kicker").textContent = cfg.mode === "chapter" ? `${WORLDS[cfg.world].name} · Chapter ${cfg.n}` : cfg.title;
     this.el("res-score").textContent = fmt(res.score);
+    this.resTable = cfg.table;
+    this.fillMascot();
     const stars = this.el("res-stars");
     stars.innerHTML = cfg.mode === "chapter" ? [0, 1, 2].map((i) => `<span class="star${i < res.stars ? " on" : ""}">★</span>`).join("") : "";
     const objs = this.el("res-objs");
@@ -457,6 +463,14 @@ const App = {
     again.onclick = () => { Sfx.click(); Play.start(cfg); };
     this.el("res-book").onclick = () => { Sfx.click(); cfg.mode === "chapter" ? this.showWorld(cfg.world) : this.showBook(); };
     this.showScreen("results");
+  },
+
+  // This world's mascot, only if its art has loaded; the slot collapses
+  // otherwise. Called again when art arrives late (see Assets.onChange).
+  fillMascot() {
+    const slot = this.el("res-mascot"), art = this.resTable && Assets.mascot(this.resTable);
+    slot.replaceChildren();
+    if (art) { const img = art.cloneNode(); img.alt = ""; slot.appendChild(img); }
   },
 
   // ---------------------------------------------------------- leaderboard --

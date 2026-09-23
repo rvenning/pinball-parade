@@ -1,3 +1,11 @@
 {
-  "files": []
+  "files": [
+    "assets/logo/logo.png",
+    "assets/world-cards/castle.png",
+    "assets/world-cards/temple.png",
+    "assets/world-cards/sea.png",
+    "assets/world-cards/workshop.png",
+    "assets/world-cards/clouds.png",
+    "assets/characters/mascot.png"
+  ]
 }

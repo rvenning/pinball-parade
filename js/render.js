@@ -187,6 +187,9 @@ const Render = {
     x.beginPath(); pts.forEach(([px, py], i) => (i ? x.lineTo(px, py) : x.moveTo(px, py)));
     x.strokeStyle = "rgba(0,0,0,0.35)"; x.lineWidth = r * 2 + 2;
     x.save(); x.translate(1.5, 2.5); x.stroke(); x.restore();
+    // A dark keyline all round, so a brass rail keeps its edge on ANY
+    // background — a bright illustrated sky took it to 2.3:1 without this.
+    x.strokeStyle = "rgba(8,10,24,0.62)"; x.lineWidth = r * 2 + 3; x.stroke();
     x.strokeStyle = a.rail; x.lineWidth = r * 2; x.stroke();
     x.strokeStyle = a.railHi; x.lineWidth = Math.max(0.8, r * 0.6); x.globalAlpha = 0.7; x.stroke(); x.globalAlpha = 1;
   },
@@ -372,7 +375,12 @@ const Render = {
     this._sim = sim;
     const lights = sim.objectiveLights();
     const P = this.pulse();
+    // Objective rings and lit inserts are the game telling the player where
+    // to aim, so they always sit on a dark underlay: a cyan ring over painted
+    // cyan water must still read as "hit this".
     const ring = (cx, cy, r) => {
+      x.strokeStyle = "rgba(6,8,18,0.6)"; x.lineWidth = 5.5;
+      x.beginPath(); x.arc(cx, cy, r + 3 + P * 3, 0, Math.PI * 2); x.stroke();
       x.strokeStyle = a.glow; x.lineWidth = 2.5; x.globalAlpha = 0.45 + 0.5 * P;
       x.beginPath(); x.arc(cx, cy, r + 3 + P * 3, 0, Math.PI * 2); x.stroke(); x.globalAlpha = 1;
     };
@@ -416,6 +424,7 @@ const Render = {
         }
         case "rollover": {
           if (e.id in lights && !st.lit) ring(e.x, e.y, e.r - 2);
+          x.fillStyle = "rgba(6,8,18,0.7)"; x.beginPath(); x.arc(e.x, e.y, e.r - 0.5, 0, Math.PI * 2); x.fill();   // the recessed insert
           x.strokeStyle = CREAM; x.lineWidth = 1.5; x.beginPath(); x.arc(e.x, e.y, e.r - 2, 0, Math.PI * 2); x.stroke();
           x.fillStyle = st.lit ? a.glow : "rgba(255,255,255,0.12)"; x.beginPath(); x.arc(e.x, e.y, e.r - 4.5, 0, Math.PI * 2); x.fill();
           break;

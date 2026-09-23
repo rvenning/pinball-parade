@@ -134,3 +134,9 @@ every table.
   only what your background replaces; `&layers=rails,mech` shows only what it
   must sit under. `?debug=1` adds an on/off button for each layer.
 - `node tools/shots.js` recaptures `docs/screenshots/` at 390 × 844, DPR 2.
+- `node tools/audit-art.js` checks what a screenshot can't: every foreground pixel
+  inside the safe region must be fully transparent, and the ivory ball must stay
+  at least 3:1 against the brighter 5% of each background. Rails carry their own
+  dark keyline and lights their own dark insert, so those stay readable on any
+  paint — but keep cyan out of the playfield scenery, because cyan is the
+  game's "hit this" colour.

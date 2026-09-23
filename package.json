@@ -1,0 +1,8 @@
+{
+  "name": "pinball-parade",
+  "private": true,
+  "description": "Pinball Parade — a storybook pinball adventure on gamekit",
+  "scripts": {
+    "test": "node --test"
+  }
+}

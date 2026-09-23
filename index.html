@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="gk-version" content="2" data-date="2026-09-24" data-kit="1.10.1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Pinball Parade — Let the story roll</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#121c3a">
+<meta name="description" content="A storybook pinball adventure. Five mechanical worlds, twenty chapters, three objectives in each — ring the bells, lower the drawbridge, wake the dragon — plus free play and a Daily Parade for the family leaderboard.">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Pinball Parade">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Cinzel+Decorative:wght@700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lib/gk-base.css">
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="icons/icon-192.png">
+</head>
+<body>
+
+<!-- Splash -->
+<div class="screen active" id="screen-splash">
+  <div class="splash-inner">
+    <div class="logo-art" id="logo-art" aria-hidden="true"></div>
+    <h1 class="logo"><span class="l1">Pinball</span><span class="l2">Parade</span></h1>
+    <p class="tagline">Let the story roll.</p>
+    <button class="btn big green" id="btn-continue-as" style="display:none"></button>
+    <button class="btn big green" id="btn-start" onclick="App.play()">▶ Let the story roll</button>
+    <button class="btn ghost" onclick="App.howTo()">📖 How to play</button>
+    <button class="btn ghost" id="btn-install" style="display:none">📲 Add to Home Screen</button>
+    <div class="splash-foot">
+      <span id="sync-badge">⏳ connecting…</span>
+      <button class="btn-sound iconbtn" aria-label="Sound">🔊</button>
+    </div>
+  </div>
+</div>
+
+<!-- Profiles (roster + PIN modals rendered by GK.Profiles) -->
+<div class="screen" id="screen-profiles">
+  <header class="topbar">
+    <button class="iconbtn" onclick="App.showScreen('splash')" aria-label="Back">←</button>
+    <h2 class="grow">Who's playing?</h2>
+    <button class="btn-sound iconbtn" aria-label="Sound">🔊</button>
+  </header>
+  <div class="content"><div class="profile-list" id="profile-list"></div></div>
+</div>
+
+<!-- The book: worlds -->
+<div class="screen" id="screen-book">
+  <header class="topbar sticky">
+    <button class="iconbtn" onclick="App.play()" aria-label="Switch player">👥</button>
+    <div class="grow book-player" id="book-player"></div>
+    <span class="map-stat" id="book-stars"></span>
+    <button class="iconbtn" onclick="App.showLeaderboard()" aria-label="Family leaderboard">🏆</button>
+  </header>
+  <div class="content">
+    <button class="btn big green wide next-btn" id="btn-next"></button>
+    <div id="daily"></div>
+    <div class="worlds" id="worlds"></div>
+  </div>
+</div>
+
+<!-- One world: its chapters and free play -->
+<div class="screen" id="screen-world">
+  <header class="topbar sticky">
+    <button class="iconbtn" onclick="App.showBook()" aria-label="Back to the book">←</button>
+    <h2 class="grow" id="world-title"></h2>
+    <button class="btn-sound iconbtn" aria-label="Sound">🔊</button>
+  </header>
+  <div class="content">
+    <div class="world-art" id="world-art"></div>
+    <p class="nudge" id="world-blurb"></p>
+    <div class="chapters" id="chapters"></div>
+    <div id="free-play"></div>
+  </div>
+</div>
+
+<!-- The table -->
+<div class="screen" id="screen-game">
+  <header class="gamebar">
+    <button class="iconbtn small" onclick="Play.pause()" aria-label="Pause">⏸</button>
+    <div class="hud-chips" id="hud-chips"></div>
+    <div class="hud-right">
+      <span class="hud-balls" id="hud-balls" aria-label="Balls left"></span>
+      <span class="hud-score" id="hud-score">0</span>
+    </div>
+  </header>
+  <div class="parade-bar" id="parade-bar" aria-label="Parade meter"><span></span></div>
+  <div class="game-stage" id="game-stage">
+    <canvas id="cv" aria-label="The pinball table"></canvas>
+    <div class="banner" id="banner" aria-live="polite"></div>
+    <span class="save-lamp" id="save-lamp">Ball save</span>
+    <button class="btn-launch" id="btn-launch" aria-label="Launch the ball">Launch<small>tap, or hold for more</small></button>
+    <div class="landscape-note">Turn me the other way up — the table is tall!</div>
+  </div>
+</div>
+
+<!-- Results -->
+<div class="screen" id="screen-results">
+  <div class="res-inner">
+    <div class="res-kicker" id="res-kicker"></div>
+    <h2 class="res-title" id="res-title"></h2>
+    <div class="res-stars" id="res-stars"></div>
+    <div class="res-score" id="res-score"></div>
+    <div class="res-objs" id="res-objs"></div>
+    <p class="res-note" id="res-note"></p>
+    <div class="res-actions">
+      <button class="btn green big" id="res-next" style="display:none"></button>
+      <div class="row-btns2">
+        <button class="btn blue" id="res-again">↻ Again</button>
+        <button class="btn grey" id="res-book">📖 Book</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Leaderboard -->
+<div class="screen" id="screen-leaderboard">
+  <header class="topbar sticky">
+    <button class="iconbtn" onclick="App.showBook()" aria-label="Back">←</button>
+    <h2 class="grow">🏆 The Family</h2>
+    <button class="btn-sound iconbtn" aria-label="Sound">🔊</button>
+  </header>
+  <div class="content">
+    <p class="nudge">Ranked on free play: every table's best score added up. ⭐ is story stars, 📅 is today's Daily Parade.</p>
+    <div class="lb-rows" id="lb-rows"></div>
+  </div>
+</div>
+
+<!-- Chapter card: the three objectives, before play -->
+<div class="modal" id="modal-chapter">
+  <div class="modal-box chapter-card">
+    <div class="cc-kicker" id="cc-kicker"></div>
+    <h2 id="cc-title"></h2>
+    <p class="cc-story" id="cc-story"></p>
+    <div class="cc-objs" id="cc-objs"></div>
+    <button class="btn big green wide" id="cc-play">▶ Play</button>
+    <button class="btn grey wide" onclick="GK.UI.closeModal('modal-chapter')">Not yet</button>
+  </div>
+</div>
+
+<!-- Pause -->
+<div class="modal" id="modal-pause">
+  <div class="modal-box">
+    <h2>⏸ Paused</h2>
+    <p>The ball is waiting right where you left it.</p>
+    <button class="btn big green wide" onclick="Play.resume()">▶ Keep playing</button>
+    <button class="btn blue wide" id="btn-finish" onclick="App.finishNow()" style="display:none">🏁 Finish the chapter</button>
+    <div class="row-btns2">
+      <button class="btn grey" onclick="App.restart()">↻ Restart</button>
+      <button class="btn grey" onclick="App.exitGame()">🚪 Leave</button>
+    </div>
+    <button class="btn-sound iconbtn" aria-label="Sound">🔊</button>
+  </div>
+</div>
+
+<!-- How to play -->
+<div class="modal" id="modal-howto">
+  <div class="modal-box howto">
+    <h2>📖 How to play</h2>
+    <ul class="howto-list">
+      <li><b>Flippers:</b> hold the left or right side of the bottom of the table. Both thumbs at once works.</li>
+      <li><b>Launch:</b> tap the glowing Launch button. Hold it longer to launch harder.</li>
+      <li><b>Every chapter has three things to do.</b> The first one opens the next chapter. Glowing rings show what to hit.</li>
+      <li><b>Stars:</b> one for the first job, one for the second, and one for the third job <i>or</i> a big score.</li>
+      <li><b>Parade:</b> keep hitting bumpers to fill the meter — then everything scores double.</li>
+      <li><b>Free play</b> on any world you have reached is where the family high scores live.</li>
+      <li>Keys: ← → or A D for flippers, Space to launch, P to pause.</li>
+    </ul>
+    <button class="btn green wide" onclick="GK.UI.closeModal('modal-howto')">Got it</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- gamekit (vendored from rvenning/gamekit into lib/) -->
+<script src="lib/gk-util.js"></script>
+<script src="lib/gk-audio.js"></script>
+<script src="lib/gk-ui.js"></script>
+<script src="lib/gk-storage.js"></script>
+<script src="lib/gk-profiles.js"></script>
+<script src="lib/gk-pwa.js"></script>
+<script src="lib/gk-fx.js"></script>
+<script src="lib/gk-debug.js"></script>
+<script>
+const Fx = GK.Fx.configure({
+  grav: 260, poolCap: 500, shakeMax: 8, shakeDecay: 30, shape: "circle",
+  burstSpeed: 150, burstSize: 2.2, textSize: 12, textDy: -28, textCap: 16,
+  font: "'Baloo 2', system-ui, sans-serif",
+});
+</script>
+<script src="js/firebase-config.js"></script>
+<!-- engine: no DOM, no canvas, no randomness -->
+<script src="js/physics.js"></script>
+<script src="js/tables.js"></script>
+<script src="js/chapters.js"></script>
+<script src="js/game.js"></script>
+<!-- app -->
+<script src="js/storage.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/assets.js"></script>
+<script src="js/render.js"></script>
+<script src="js/input.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

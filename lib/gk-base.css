@@ -1,0 +1,195 @@
+/* gamekit · gk-base.css — shared UI primitives for family games.
+   Theme by overriding the custom properties in your game stylesheet:
+
+     :root {
+       --gk-accent: #ffb32b;  --gk-accent-sh: #d98e12;
+       --gk-ink: #12232e;     --gk-card: rgba(255,255,255,.95);
+     }
+
+   Game-specific styles (backgrounds, world maps, HUDs) stay in the game. */
+
+/* Kit components must not depend on the host page's box-sizing reset:
+   width:100% + padding on inputs/buttons overflows without border-box. */
+.screen, .screen *, .modal, .modal *, .toast { box-sizing: border-box; }
+
+/* The HTML `hidden` attribute must win. Any author rule with a class selector
+   — .btn { display:inline-flex }, .screen { display:none }, and their friends
+   below — out-specifies the browser's UA `[hidden] { display:none }`, so
+   `el.hidden = true` on an element carrying one of those classes silently does
+   nothing: the control stays on screen and stays clickable. Aquamarine shipped
+   a free reroll that way — the Roll button hid itself after rolling, except it
+   didn't. */
+[hidden] { display: none !important; }
+
+:root {
+  /* Button colours are a contrast decision, not a palette whim: .btn prints
+     lettering on every one of these. Ratios below are WCAG 2.x, measured with
+     tools/contrast.js — never eyeballed. The bar is 4.5:1 for normal text and
+     3:1 for large (>=18.66px bold); .btn is 19px/800 and so counts as large,
+     but the kit aims for 4.5:1 so a smaller label added to a button later
+     (.btn .sub, which several games use) cannot quietly drop under the bar.
+
+     The old green/blue/grey/danger measured 2.21 / 3.01 / 3.10 / 3.68 against
+     the white lettering they were paired with — green failed even the large
+     bar. These darker values are the ones tiny-rex and block-party ship. */
+  --gk-accent: #ffb32b;                            /* 8.98 vs --gk-ink below */
+  --gk-accent-sh: #d98e12;
+  --gk-green: #1a8253;   --gk-green-sh: #106b42;   /* 4.81 vs #fff */
+  --gk-blue:  #2670ab;   --gk-blue-sh:  #17527f;   /* 5.26 vs #fff */
+  --gk-grey:  #616675;   --gk-grey-sh:  #414553;   /* 5.72 vs #fff */
+  --gk-danger:#c0463d;   --gk-danger-sh:#8c2f28;   /* 5.01 vs #fff */
+  --gk-ink:   #12232e;
+
+  /* Lettering on the DEFAULT (accent) button. Accent is a light amber, so it
+     carries ink: white on #ffb32b is 1.78:1, ink on that very same amber is
+     8.98:1 — the fix costs no colour change at all. It is a token because a
+     game whose accent is DARK wants white back. Which games those are was
+     settled by reading computed styles in the browser, not by reading the
+     stylesheets: most games paint their own accent button (often a gradient)
+     or set their own .btn colour, so the token value alone does not predict
+     it. Across the 29 games it came to exactly one — alien-chomp, whose
+     magenta #b5298f reads 5.70 white against 3.22 ink — and it sets
+     --gk-btn-ink:#fff.
+     The .green/.blue/.grey/.danger variants are dark by construction and
+     always take white, set explicitly below. */
+  --gk-btn-ink: var(--gk-ink);
+  --gk-card:  rgba(255,255,255,.95);
+  --gk-input-border: #d8dee4;
+  --gk-key-bg: #f0f3f6;
+  --gk-key-sh: #d3dae0;   /* 3D under-shadow on PIN keys */
+}
+
+/* ---------- Screens ---------- */
+.screen { position:fixed; inset:0; display:none; flex-direction:column;
+          align-items:center; justify-content:flex-start; overflow-y:auto;
+          touch-action:pan-y; }
+.screen.active { display:flex; }
+
+.topbar { width:100%; max-width:560px; display:flex; align-items:center; gap:10px;
+          padding: calc(14px + env(safe-area-inset-top)) 16px 6px; }
+.topbar .grow { flex:1; }
+.iconbtn { background:rgba(255,255,255,.9); border:none; border-radius:14px;
+           width:46px; height:46px; font-size:22px; cursor:pointer; color:var(--gk-ink);
+           box-shadow:0 4px 0 rgba(0,0,0,.18); }
+.iconbtn:active { transform:translateY(2px); box-shadow:0 2px 0 rgba(0,0,0,.18); }
+
+h1.title { font-size:44px; margin:30px 0 4px; text-shadow:0 4px 0 rgba(0,0,0,.25); }
+.subtitle { opacity:.95; font-size:17px; margin:0 0 8px; }
+.content { width:100%; max-width:560px; padding:8px 16px 40px; }
+
+/* Splash: wrap the title/subtitle/buttons in .splash-inner to centre them
+   vertically. Auto margins rather than justify-content:center so content taller
+   than the viewport still scrolls fully into reach instead of clipping at top. */
+.splash-inner { margin:auto; width:100%; display:flex; flex-direction:column;
+                align-items:center; text-align:center; padding:16px 0; }
+.splash-inner h1.title { margin-top:0; }
+.splash-inner .content { padding-bottom:8px; }
+
+/* ---------- Buttons ---------- */
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:8px;
+       border:none; border-radius:16px; padding:16px 22px; font-size:19px; font-weight:800;
+       cursor:pointer; color:var(--gk-btn-ink); background:var(--gk-accent); box-shadow:0 6px 0 var(--gk-accent-sh);
+       margin:8px 0; }
+.btn.green  { background:var(--gk-green);  box-shadow:0 6px 0 var(--gk-green-sh); }
+.btn.blue   { background:var(--gk-blue);   box-shadow:0 6px 0 var(--gk-blue-sh); }
+.btn.grey   { background:var(--gk-grey);   box-shadow:0 6px 0 var(--gk-grey-sh); }
+.btn.danger { background:var(--gk-danger); box-shadow:0 6px 0 var(--gk-danger-sh); }
+/* Explicit, because the base rule no longer assumes white: these four are dark
+   enough to need it (4.81-5.72 vs #fff), and ink on them measures 2.45-3.34. */
+.btn.green, .btn.blue, .btn.grey, .btn.danger { color:#fff; }
+.btn.wide   { width:100%; }
+.btn:active { transform:translateY(3px); box-shadow:0 3px 0 rgba(0,0,0,.3); }
+.btn:disabled { filter:grayscale(.7) brightness(.9); cursor:not-allowed; }
+
+/* ---------- Profile roster (rendered by gk-profiles.js) ---------- */
+.profile-list { display:flex; flex-direction:column; gap:12px; }
+.profile-card { position:relative; display:grid; grid-template-columns:56px 1fr auto;
+                align-items:center; gap:12px; background:var(--gk-card); color:var(--gk-ink);
+                border-radius:18px; padding:14px 16px; cursor:pointer; box-shadow:0 6px 0 rgba(0,0,0,.15); }
+.profile-card:active { transform:translateY(2px); }
+/* Every cell is placed EXPLICITLY. The layout is avatar | name+meta | buttons,
+   and it does not come out that way on auto-placement: .avatar and .row-btns
+   both carry a definite grid-row, and CSS grid places every definite-row item
+   BEFORE the auto-placed ones. So .row-btns took column 2, .pname was pushed
+   out to column 3 hard against the right edge, and .pmeta dropped to a third
+   row underneath. Measured in the browser, not guessed: .row-btns sat at
+   x=103 w=158 while .pname sat at x=273. Pinning the columns puts it back. */
+.profile-card .avatar { font-size:40px; grid-column:1; grid-row:1/3; text-align:center; }
+.profile-card .pname { font-weight:800; font-size:20px; grid-column:2; grid-row:1; }
+.profile-card .pmeta { font-size:14px; opacity:.7; grid-column:2; grid-row:2; }
+/* The add card is two columns (no buttons) and renders avatar + pname only, so
+   its name spans both rows instead of sitting at the top of a two-row card. */
+.profile-card.add { opacity:.9; grid-template-columns:56px 1fr; }
+.profile-card.add .pname { grid-row:1/3; align-self:center; }
+.profile-card .ppin, .profile-card .pdelete {
+    background:none; border:none; font-size:20px; cursor:pointer; }
+.profile-card .row-btns { grid-column:3; grid-row:1/3; display:flex; gap:2px; }
+
+/* ---------- Leaderboard (rendered by gk-profiles.js) ---------- */
+.lb-row { display:grid; grid-template-columns:44px 46px 1fr auto auto; align-items:center; gap:10px;
+          background:var(--gk-card); color:var(--gk-ink); border-radius:14px; padding:10px 14px; margin:8px 0;
+          box-shadow:0 4px 0 rgba(0,0,0,.12); }
+.lb-row.me { outline:3px solid var(--gk-accent); }
+.lb-rank { font-size:22px; font-weight:900; text-align:center; }
+.lb-avatar { font-size:30px; }
+.lb-name { font-weight:800; }
+.lb-stat { font-size:14px; font-weight:700; opacity:.85; white-space:nowrap; }
+.lb-empty { text-align:center; opacity:.85; padding:30px; }
+
+/* ---------- Modals (gk-profiles.js / gk-pwa.js inject these) ---------- */
+.modal { position:fixed; inset:0; display:none; place-items:center; z-index:50;
+         background:rgba(0,0,0,.5); padding:20px; }
+.modal.visible { display:grid; }
+.sheet { background:#fff; color:var(--gk-ink); border-radius:22px; padding:24px; width:100%;
+         max-width:380px; box-shadow:0 20px 60px rgba(0,0,0,.5); text-align:center; }
+.sheet h2 { margin:0 0 6px; font-size:24px; }
+.sheet p { margin:6px 0; opacity:.8; }
+.sheet input { width:100%; padding:14px; font-size:18px; border:2px solid var(--gk-input-border);
+               border-radius:14px; margin:8px 0; text-align:center; }
+.avatar-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px; margin:12px 0; }
+.avatar-choice { font-size:28px; padding:8px 0; border:2px solid transparent; border-radius:14px;
+                 background:var(--gk-key-bg); cursor:pointer; }
+.avatar-choice.selected { border-color:var(--gk-accent); background:#fff4dc;
+                          background:color-mix(in srgb, var(--gk-accent) 18%, #fff); }
+.row-btns2 { display:flex; gap:10px; margin-top:10px; }
+.row-btns2 .btn { flex:1; margin:0; }
+
+/* ---------- PIN keypad (WordVoyage's original design, themed) ---------- */
+.pin-dots { display:flex; gap:14px; justify-content:center; margin:14px 0; }
+.pin-dots span { width:18px; height:18px; border-radius:50%;
+                 background:var(--gk-key-bg); border:3px solid var(--gk-input-border);
+                 transition: transform .15s, background .15s; }
+.pin-dots span.on { background:var(--gk-accent); border-color:var(--gk-accent-sh);
+                    transform:scale(1.15); }
+.pin-dots.shake { animation: gk-shake .4s; }
+@keyframes gk-shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
+.pin-pad { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; justify-items:center; margin:8px 0; }
+.pin-key { width:64px; height:56px; border:none; border-radius:16px; cursor:pointer;
+           font-family:inherit; font-size:1.4rem; font-weight:800; color:var(--gk-ink);
+           background:var(--gk-key-bg); box-shadow:0 3px 0 var(--gk-key-sh);
+           transition: transform .08s; }
+.pin-key:active { transform:translateY(2px); box-shadow:none; }
+.pin-key.blank { visibility:hidden; }
+
+/* ---------- Toast ---------- */
+.toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+         background:rgba(0,0,0,.8); color:#fff; padding:12px 20px; border-radius:14px;
+         font-weight:700; opacity:0; transition:opacity .3s; pointer-events:none; z-index:80; }
+.toast.show { opacity:1; }
+
+/* ---------- Touch devices (iPad-first) ---------- */
+@media (pointer: coarse) {
+  .iconbtn { width:54px; height:54px; font-size:24px; }
+  .btn { padding:18px 24px; font-size:20px; }
+  .pin-key { width:72px; height:62px; font-size:1.6rem; }
+  .profile-card { padding:18px; }
+  .profile-card .ppin, .profile-card .pdelete { font-size:24px; padding:10px; }
+}
+
+/* GK.Version — the version line at the foot of the home screen (see gk-pwa.js). */
+.gk-version { margin:auto 0 0; padding:18px 12px calc(10px + env(safe-area-inset-bottom));
+              display:flex; flex-wrap:wrap; gap:4px 10px; align-items:center; justify-content:center;
+              font-size:12px; line-height:1.4; opacity:.72; text-align:center;
+              font-variant-numeric:tabular-nums; }
+.gk-version-status.ok { font-weight:700; }
+.gk-version .gk-version-update { padding:6px 12px; min-height:0; font-size:12px; }

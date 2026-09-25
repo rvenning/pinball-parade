@@ -19,6 +19,13 @@ const SHOTS = [
   ["world-chapters", "shot=world&w=0"],
   ["chapter-card", "shot=chapter&c=1"],
   ["results", "shot=results"],
+  ["results-continued", "shot=results&lost=1"],
+  // each world mid-story, its signature mechanism at work
+  ["story-castle-dragon", "shot=play-castle&n=3&phase=2&sec=8"],
+  ["story-temple-stairs", "shot=play-temple&n=2&phase=1&sec=8"],
+  ["story-sea-whirlpool", "shot=play-sea&n=2&phase=2&sec=8"],
+  ["story-workshop-clock", "shot=play-workshop&n=2&phase=1&sec=8"],
+  ["story-clouds-drift", "shot=play-clouds&n=3&phase=1&sec=8"],
   ...TABLES.map((t) => [`table-${t}-empty`, `shot=${t}&hide=ball,fx,hud`]),
   ...TABLES.map((t) => [`table-${t}-play`, `shot=play-${t}`]),
   // registration aids for the art pass

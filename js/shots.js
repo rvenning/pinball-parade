@@ -8,6 +8,8 @@
 //   ?shot=splash | book | world&w=0 | chapter&c=1 | results
 //   ?shot=<tableId>            the empty table (add &hide=ball,fx,hud,mech …)
 //   ?shot=play-<tableId>       the table mid-game, frozen on a lively frame
+//        &n=<chapter 1-4>  &phase=<0-based phase to start at, table transformed to match>
+//   ?shot=results&lost=1       the "to be continued" card with its checkpoint
 (function () {
   const q = new URLSearchParams(location.search), shot = q.get("shot");
   if (!shot) return;
@@ -54,14 +56,18 @@
   else if (shot === "chapter") { App.showWorld(0); App.chapterCard(+(q.get("c") || 1)); done(); }
   else if (shot === "results") {
     const cfg = Object.assign({ mode: "chapter" }, CHAPTERS[2]);
-    App.showResults(cfg, { mode: "chapter", won: true, score: 23480, done: [true, true, false], stars: 3, seconds: 140, stats: {} });
+    const lost = q.get("lost") === "1", n = cfg.phases.length;
+    App.showResults(cfg, lost
+      ? { mode: "chapter", won: false, told: false, score: 41250, phase: 2, phases: n, bonus: true, stars: 0, seconds: 212, checkpoint: { phase: 2, score: 30100, bonus: true }, stats: {} }
+      : { mode: "chapter", won: true, told: true, score: 98480, phase: n, phases: n, bonus: true, stars: 3, seconds: 318, checkpoint: null, stats: {} });
     done();
   } else if (table && shot === table.id) {
     Play.start(freePlayConfig(table.id), { showcase: true });
     setTimeout(done, 300);
   } else if (table) {
     const ch = CHAPTERS.filter((c) => c.table === table.id)[+(q.get("n") || 2) - 1];
-    Play.start(Object.assign({ mode: "chapter" }, ch));
+    const ph = +(q.get("phase") || 0);
+    Play.start(Object.assign({ mode: "chapter" }, ch, ph ? { resume: { phase: ph, score: 20000 } } : {}));
     const sim = Play.sim;
     sim.events = null;
     run(sim, +(q.get("sec") || 16));

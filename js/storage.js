@@ -19,6 +19,11 @@ const PROGRESS = {
     worldsOpen: 1,       // highest world unlocked (derived, stored for the roster line)
     dailyDate: "", dailyScore: 0, dailyDone: 0,
     stats: {},           // lifetime counters, STAT_KEYS
+    // Pacing from REAL play: seconds and games spent on a chapter up to its
+    // first clear (paceRun while still trying, pace once told). Write-once.
+    pace: {}, paceRun: {},
+    // Where an unfinished story can be picked up: { idx, phase, score, bonus, at }.
+    resume: null,
     updated: 0,
   }),
 
@@ -34,9 +39,16 @@ const PROGRESS = {
     for (const [k, v] of Object.entries(b.stats || {})) stats[k] = Math.max(stats[k] || 0, v || 0);
     const da = a.dailyDate || "", db = b.dailyDate || "";
     const day = db > da ? b : da > db ? a : ((b.dailyScore || 0) > (a.dailyScore || 0) ? b : a);
+    // a first-clear time is written once: whichever device recorded it first keeps it
+    const pace = { ...(b.pace || {}), ...(a.pace || {}) };
+    const paceRun = { ...(a.paceRun || {}) };
+    for (const [k, v] of Object.entries(b.paceRun || {})) if (!paceRun[k] || (v.secs || 0) > (paceRun[k].secs || 0)) paceRun[k] = v;
+    for (const k of Object.keys(pace)) delete paceRun[k];
+    const ra = a.resume, rb = b.resume;
+    const resume = !ra ? rb || null : !rb ? ra : ((rb.at || 0) > (ra.at || 0) ? rb : ra);
     return {
       ...a, ...b,
-      chapters, tables, stats,
+      chapters, tables, stats, pace, paceRun, resume,
       worldsOpen: Math.max(a.worldsOpen || 1, b.worldsOpen || 1),
       dailyDate: day.dailyDate || "", dailyScore: day.dailyScore || 0,
       dailyDone: Math.max(a.dailyDone || 0, b.dailyDone || 0),
@@ -73,10 +85,27 @@ const Progress = {
   },
   freeTotal(p) { return Object.values(p.tables || {}).reduce((s, v) => s + (v || 0), 0); },
 
+  // A checkpoint for this chapter, if the last game on it stopped part-way.
+  resumeFor(p, idx) {
+    const r = p.resume;
+    return r && r.idx === idx && r.phase > 0 ? r : null;
+  },
+
   // Fold one finished game into a progress object (returns it). Only a game
-  // whose primary is done records a chapter; lifetime counters always count.
-  record(p, cfg, res) {
+  // whose story is told records a chapter; lifetime counters always count.
+  record(p, cfg, res, now) {
     p.chapters = p.chapters || {}; p.tables = p.tables || {}; p.stats = p.stats || {};
+    p.pace = p.pace || {}; p.paceRun = p.paceRun || {};
+    if (cfg.mode === "chapter") {
+      const k = cfg.idx;
+      if (!p.pace[k]) {
+        const run = p.paceRun[k] || { secs: 0, games: 0 };
+        run.secs += res.seconds || 0; run.games += 1;
+        if (res.told) { p.pace[k] = run; delete p.paceRun[k]; } else p.paceRun[k] = run;
+      }
+      const at = now || Date.now();
+      p.resume = !res.told && res.checkpoint && res.checkpoint.phase > 0 ? Object.assign({ idx: k, at }, res.checkpoint) : (p.resume && p.resume.idx !== k ? p.resume : { idx: -1, at });
+    }
     if (cfg.mode === "free") p.tables[cfg.table] = Math.max(p.tables[cfg.table] || 0, res.score);
     else if (cfg.mode === "daily") {
       if (p.dailyDate !== cfg.date) { p.dailyDate = cfg.date; p.dailyScore = 0; p.dailyDone = (p.dailyDone || 0) + 1; }

@@ -4,8 +4,10 @@
 // here exactly as it would under a finger.
 //   node tools/e2e.js [baseUrl]
 // Walks: splash → new player → book → chapter card → play → launch →
-// both flippers at once → pause/resume → play to an objective and a drain →
-// results → next chapter. Exits non-zero on the first broken step.
+// both flippers at once → pause/resume → then PLAYS CHAPTER 1 TO THE END in
+// real time with real touches, carrying on from the checkpoint after a lost
+// game, and reports how long the story took on the wall clock — the real-play
+// check on the bots' pacing numbers. Exits non-zero on the first broken step.
 const { launch, wait } = require("./cdp.js");
 const BASE = process.argv[2] || "http://localhost:8133/";
 
@@ -23,7 +25,7 @@ const BASE = process.argv[2] || "http://localhost:8133/";
 
   try {
     await send("Page.navigate", { url: BASE + "index.html" });
-    for (let i = 0; i < 40 && (await evaluate("typeof App !== 'undefined' && document.readyState === 'complete'")) !== true; i++) await wait(200);
+    for (let i = 0; i < 150 && (await evaluate("typeof GK !== 'undefined' && typeof App !== 'undefined' && document.readyState === 'complete'")) !== true; i++) await wait(200);
     ok("splash is up", (await screen()) === "splash");
     ok("fresh device: no Continue button", (await evaluate("getComputedStyle(document.getElementById('btn-continue-as')).display")) === "none");
     await tap("#btn-start");
@@ -41,7 +43,8 @@ const BASE = process.argv[2] || "http://localhost:8133/";
     if ((await screen()) === "profiles") { await tap("#profile-list .profile-card"); await wait(300); }
     ok("the book opens for the new player", (await screen()) === "book");
     await tap("#btn-next");
-    ok("chapter card shows three objectives", (await evaluate("document.querySelectorAll('#cc-objs .cc-obj').length")) === 3);
+    const nPhases = await evaluate("CHAPTERS[0].phases.length");
+    ok("chapter card tells the story in phases", (await evaluate("document.querySelectorAll('#cc-objs .cc-obj.phase').length")) === nPhases && (await evaluate("!!document.querySelector('#cc-objs .cc-obj.finale')")), `${nPhases} phases`);
     await tap("#cc-play");
     await wait(500);
     ok("the table is up", (await screen()) === "game");
@@ -53,6 +56,7 @@ const BASE = process.argv[2] || "http://localhost:8133/";
     ok("launch button is on screen and clear of the ball", !!lb && (await evaluate(`(() => { const r = document.getElementById('btn-launch').getBoundingClientRect(), p = Render.toScreen(370, 700); return !(p.x > r.left && p.x < r.right && p.y > r.top && p.y < r.bottom) && r.bottom <= innerHeight; })()`)));
     await touch([lb], "touchStart"); await wait(120); await touch([], "touchEnd"); await wait(400);
     ok("the ball launches", (await evaluate("Play.sim.S.stats.launches")) >= 1);
+    ok("the HUD names what the story wants now", (await evaluate("document.querySelector('#chip-phase .ph-label').textContent")) === (await evaluate("CHAPTERS[0].phases[0].label")));
 
     const L = await tableXY(100, 640), R = await tableXY(270, 640);
     await evaluate("window.__plog = []; for (const t of ['pointerdown','pointerup','pointercancel','lostpointercapture']) document.getElementById('game-stage').addEventListener(t, (e) => __plog.push(t + ':' + e.pointerId), true); true");
@@ -80,10 +84,15 @@ const BASE = process.argv[2] || "http://localhost:8133/";
     ok("resume carries on without a jump", t2 > t1 && t2 - t1 < 0.6, `${(t1 - t0).toFixed(2)}s before, +${(t2 - t1).toFixed(2)}s after`);
 
     // Play with real touches: flip whichever side the ball is falling toward.
+    // Game after game, carrying the story on from its checkpoint, until told.
     const seen = new Set();
-    await evaluate("window.__seen = []; const o = Play.drain.bind(Play); Play.drain = function () { for (const e of this.sim.events) window.__seen.push(e.type); return o(); }; true");
+    const wall0 = Date.now();
+    let simSecs = 0, games = 0, told = false;
+    const watch = "window.__seen = window.__seen || []; if (!Play.__w) { const o = Play.drain.bind(Play); Play.drain = function () { for (const e of this.sim.events) window.__seen.push(e.type); return o(); }; Play.__w = 1; } true";
+    await evaluate(watch);
+    for (games = 1; games <= 6 && !told; games++) {
     let held = null;
-    for (let i = 0; i < 1400 && (await screen()) === "game"; i++) {
+    for (let i = 0; i < 20000 && (await screen()) === "game" && Date.now() - wall0 < 12 * 60000; i++) {
       const s = await evaluate("(() => { const S = Play.sim && Play.sim.S; if (!S) return null; const b = S.balls.filter(b => b.mode === 'play').sort((a, c) => c.y - a.y)[0]; return { b: b && [b.x, b.y, b.vy], ready: document.getElementById('btn-launch').classList.contains('ready') }; })()");
       if (!s) break;
       if (s.ready) { const p = await center("#btn-launch"); await touch([p], "touchStart"); await wait(60); await touch([], "touchEnd"); continue; }
@@ -93,10 +102,20 @@ const BASE = process.argv[2] || "http://localhost:8133/";
       await wait(30);
     }
     if (held) await touch([], "touchEnd");
+    simSecs += await evaluate("Play.sim ? Play.sim.S.t : 0");
+    for (let i = 0; i < 30 && (await screen()) === "game"; i++) await wait(200);
+    told = (await evaluate("document.getElementById('res-title').textContent")) !== "To be continued…";
+    steps.push(`  game ${games}: ${await evaluate("document.getElementById('res-title').textContent")} (${Math.round((Date.now() - wall0) / 1000)}s on the wall clock so far)`);
+    if (!told && games < 6) { await tap("#res-next"); await wait(600); }
+    }
     for (const e of await evaluate("window.__seen")) seen.add(e);
-    await wait(1500);
-    ok("an objective completed on the table", seen.has("objective"), [...seen].filter((e) => ["objective", "bumper", "saved", "ballLost", "flip", "chapterWon"].includes(e)).join(","));
+    const wall = (Date.now() - wall0) / 1000;
+    ok("phases completed and the table changed", seen.has("phaseDone") && seen.has("effect"), [...seen].filter((e) => ["phaseDone", "effect", "bumper", "saved", "ballLost", "chapterWon", "storyTold"].includes(e)).join(","));
     ok("results arrive", (await screen()) === "results", await evaluate("document.getElementById('res-title').textContent"));
+    ok("chapter 1 told by real play", told, `${games - 1} game(s)`);
+    ok("real play took as long as the story says (2–4 min band, never under 1)", wall >= 60, `${(wall / 60).toFixed(1)} min on the wall clock, ${(simSecs / 60).toFixed(1)} min of table time, ${games - 1} game(s)`);
+    const pace = await evaluate("JSON.stringify(Storage.getProgress(App.profile.id).pace || {})");
+    ok("the pacing log recorded the first clear", (JSON.parse(pace)[0] || {}).secs > 0, pace);
     const stars = await evaluate("document.querySelectorAll('#res-stars .star.on').length");
     const saved = await evaluate("JSON.stringify(Storage.getProgress(App.profile.id).chapters)");
     ok("the result is saved", saved.includes('"0"'), `${stars}★ ${saved}`);
@@ -105,7 +124,7 @@ const BASE = process.argv[2] || "http://localhost:8133/";
       ok("next chapter card opens", (await evaluate("document.getElementById('cc-title').textContent")) === "Lower the Drawbridge");
     }
     await send("Page.navigate", { url: BASE + "index.html" });
-    for (let i = 0; i < 40 && (await evaluate("typeof App !== 'undefined' && document.readyState === 'complete'")) !== true; i++) await wait(200);
+    for (let i = 0; i < 150 && (await evaluate("typeof GK !== 'undefined' && typeof App !== 'undefined' && document.readyState === 'complete'")) !== true; i++) await wait(200);
     ok("returning player gets one-tap Continue", /Continue as/.test(await evaluate("document.getElementById('btn-continue-as').textContent")));
     ok("no uncaught errors", !b.logs.some((l) => l.startsWith("EXCEPTION")), b.logs.filter((l) => !/403|Firebase|auth|firestore/i.test(l)).join(" | "));
   } catch (e) {

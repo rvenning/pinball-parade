@@ -15,17 +15,18 @@
 <circle cx="60" cy="1176" r="20" fill="none" stroke="#39f" stroke-width="3" stroke-dasharray="6 6"/>
 <circle cx="676" cy="1176" r="20" fill="none" stroke="#39f" stroke-width="3" stroke-dasharray="6 6"/>
 <circle cx="368" cy="1400" r="20" fill="none" stroke="#e33" stroke-width="3"/>
-<circle cx="256" cy="452" r="38" fill="none" stroke="#e33" stroke-width="3"/>
-<circle cx="480" cy="452" r="38" fill="none" stroke="#e33" stroke-width="3"/>
-<circle cx="368" cy="592" r="38" fill="none" stroke="#e33" stroke-width="3"/>
+<circle cx="224" cy="572" r="38" fill="none" stroke="#e33" stroke-width="3"/>
+<circle cx="368" cy="528" r="38" fill="none" stroke="#e33" stroke-width="3"/>
+<circle cx="512" cy="572" r="38" fill="none" stroke="#e33" stroke-width="3"/>
 <polyline points="128.0,856.0 128.0,420.0" fill="none" stroke="#e33" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
 <rect x="34" y="410" width="88" height="490" fill="rgba(80,200,255,0.12)" stroke="#39f" stroke-dasharray="6 6"/>
 <polyline points="34.0,660.0 122.0,660.0" fill="none" stroke="#39f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 6" opacity="0.85"/>
+<circle cx="368" cy="336" r="144" fill="none" stroke="#39f" stroke-width="3" stroke-dasharray="6 6"/>
+<circle cx="368" cy="336" r="24" fill="none" stroke="#39f" stroke-width="3" stroke-dasharray="6 6"/>
 <circle cx="584" cy="336" r="24" fill="none" stroke="#39f" stroke-width="3" stroke-dasharray="6 6"/>
 <polyline points="694.0,584.0 694.0,628.0" fill="none" stroke="#e33" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
 <polyline points="694.0,644.0 694.0,688.0" fill="none" stroke="#e33" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
 <polyline points="694.0,704.0 694.0,748.0" fill="none" stroke="#e33" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
-<polyline points="428.0,280.0 512.0,280.0" fill="none" stroke="#39f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 6" opacity="0.85"/>
 <polyline points="224.0,1296.0 331.4,1358.0" fill="none" stroke="#e33" stroke-width="40" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
 <polyline points="224.0,1296.0 335.4,1241.6" fill="none" stroke="rgba(238,51,51,0.4)" stroke-width="40" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
 <polyline points="512.0,1296.0 404.6,1358.0" fill="none" stroke="#e33" stroke-width="40" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>

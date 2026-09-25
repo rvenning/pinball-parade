@@ -2,9 +2,9 @@
 
 **Let the story roll.** A storybook pinball adventure where every table is a
 miniature mechanical world and every shot moves the story on. Five worlds, twenty
-chapters, three objectives each — ring the bells, lower the drawbridge, wake the
-dragon — plus free play on every table and a Daily Parade for the family
-leaderboard.
+chapters, each a little pinball story told in phases — ring the bells, lower the
+drawbridge, wake the dragon and chase it across the sky — plus free play on every
+table and a Daily Parade for the family leaderboard.
 
 ## Play it
 
@@ -14,21 +14,31 @@ Portrait, phone or tablet. Installs as an app (Add to Home Screen) and works off
 
 ## Features
 
-- **Five tables, one feel.** Moonlight Castle, Jungle Temple, Deep Sea, Clockwork
-  Workshop and Cloud Kingdom each have their own layout and mechanisms on a shared
-  lower playfield, so the flipper skill learned on the first table carries over.
-- **Twenty chapters.** Each shows three short objectives before play and keeps
-  them as icon chips during it. The first opens the next chapter; stars come from
-  the second and from the third *or* a generous score. Completing an objective
-  changes the table — the drawbridge comes down, the dragon wakes, the chest opens.
-- **Kind to small players.** Early chapters raise a post between the flippers,
-  relight the outlane kickbacks quickly and give a long ball save; a chapter whose
-  story is told wraps itself up after three minutes. No score can ever block
-  progress, and a genuinely stuck ball is nudged and then returned for free.
+- **Five tables, five shapes.** Each world has its own layout and signature
+  mechanisms on a shared lower playfield, so the flipper skill carries over:
+  the castle's drawbridge and flying dragon; the temple's central stairs behind
+  two toppling stones and the idol's eye; the sea's current and whirlpool (no
+  ramp — the water moves the ball); the workshop's pendulum and clockwork door
+  that ticks open and shut; the clouds that drift and the rainbow lane.
+- **Twenty stories.** A chapter is a setup, 4–8 phases and a finale — a hurry-up
+  jackpot, a timed frenzy or two-ball play. Only the current phase is lit, every
+  phase changes the table, and the length comes from new shots, never from padded
+  counts. Stars: tell the story, win the side quest, beat the score.
+  See [`docs/STORY-DESIGN.md`](docs/STORY-DESIGN.md).
+- **Designed pacing, measured.** Intro chapters take 2–4 minutes, middle ones 4–7,
+  each world's finale 6–10, and nothing under a minute — asserted with the bots
+  and checked with real-time real-touch play; the app logs each player's real
+  times (`?debug=1` → pacing report).
+- **Kind to small players.** Every new phase brings a ball save and relit
+  kickbacks; middle chapters have 4 balls and finales 5; a game that runs out of
+  balls leaves a checkpoint, and the next carries the story on from there. No
+  score can ever block progress, and a genuinely stuck ball is nudged and then
+  returned for free.
 - **Real pinball underneath.** A fixed 1/480 s step, tunnel-proof micro-stepping,
   tapered flippers with true surface speed, pop bumpers, slingshots, stand-up and
-  drop targets, lane change, spinners, ramps, one-way gates, a swinging diverter,
-  wind and current fields, saucers, ball locks and two-ball multiball.
+  drop targets, lane change, spinners, ramps, one-way and clockwork gates, a
+  pendulum, moving targets and bumpers, wind, current and whirlpool fields,
+  saucers, ball locks and two-ball multiball.
 - **Parade meter.** Bumper chains fill it; a parade is ten seconds of double points
   with a march.
 - **Free play and the Daily Parade** are the optional skill layer: every mechanism
@@ -58,8 +68,8 @@ No build step: plain scripts in load order.
 |---|---|
 | `js/physics.js` | capsule/circle/flipper collision, one resolver — no DOM, no randomness |
 | `js/tables.js` | the five tables as data: one vocabulary of elements, shared lower playfield |
-| `js/chapters.js` | the twenty chapters, free play and the Daily Parade |
-| `js/game.js` | `Sim`: ball lifecycle, objectives, scoring, parade, locks — cloneable plain state |
+| `js/chapters.js` | the twenty chapter stories, their pacing bands, free play and the Daily Parade |
+| `js/game.js` | `Sim`: ball lifecycle, the story (phases, bonus, checkpoints), movers, scoring, locks — cloneable plain state |
 | `js/render.js` | layered Canvas renderer drawing the same element data |
 | `js/input.js` | multi-touch, mouse and keys → three booleans |
 | `js/assets.js` | optional illustrated art with procedural fallbacks |
@@ -85,10 +95,11 @@ and [`docs/screenshots/`](docs/screenshots/) the current captures.
 ## Tests
 
 ```
-node --test                 # 41 tests: physics, table lint, balance bots, storage
-node tools/e2e.js           # trusted-touch first run in headless Edge (server on :8133)
-PP_REPORT=1 node --test tests/bot.test.js   # per-chapter balance tables
-node tools/balance.js 1 20 3               # the full bot matrix
+node --test                 # 54 tests: physics, table + story lint, pacing, bots, storage
+node tools/e2e.js           # trusted touch in headless Edge; plays chapter 1 to the end (server on :8133)
+PP_REPORT=1 node --test tests/pacing.test.js   # minutes per chapter, per phase, stars
+node tools/shot-rates.js castle 20             # hits per minute on every mechanism, per bot
+node tools/balance.js 1 20 5                  # times, scores, stars and score-target suggestions
 ```
 
 - **Physics:** exact contacts, restitution, resting, tunnelling at ten times the
@@ -96,13 +107,19 @@ node tools/balance.js 1 20 3               # the full bot matrix
   slow rolling alone, byte-identical replays.
 - **Table lint:** no pinch gaps or overlapping solids, every plunger strength
   reaches the table, a ball dropped anywhere drains unaided (no traps, no stable
-  orbits), ramp exits feed a flipper, weak shots roll back, objectives name real
-  mechanisms, concepts arrive one at a time, the art brief matches the code.
+  orbits) with every door shut and again with everything open and moving, movers
+  never pinch at any point of their sweep, no saucer juggles its own eject, ramp
+  exits feed a flipper, weak shots roll back. Every chapter is walked phase by
+  phase against the table it changes: nothing aimed at what is hidden or shut, no
+  padded counts, no phase repeating the one before, a special finale.
+- **Pacing:** every chapter played as the family plays it (carrying on from
+  checkpoints) lands in its band, no phase takes over half a chapter, every star is
+  earnable and none is free, and nobody tells chapter 1 in under a minute.
 - **Bots, all on the real engine:** an idle control, an enthusiastic masher, a
   delayed and distractible child, a quicker older child, and a planner that clones
-  the game to choose flip timings. The child finishes the first two worlds on every
-  seed, the older child the whole book, the planner everything; the planner scores
-  far above both children.
+  the game to choose flip timings and aims at whatever the story has lit. The child
+  tells every story of the first two worlds on every seed, the older child the whole
+  book, the planner everything it tries; better players tell the same story faster.
 
 ## Local development
 
@@ -115,5 +132,6 @@ npx http-server . -p 8133 -c-1
 localStorage prefix `pbp_`; Firestore collection `pinballparade` in the shared
 family project (the public API key is restricted and safe to ship). Progress keeps
 best stars and score per chapter, best free-play score per table, the day's Daily
-Parade and lifetime counters — all monotonic, merged by max. `?debug=1` and the
+Parade and lifetime counters — all monotonic, merged by max — plus the pacing log
+(time to each chapter's first clear, written once) and the newest checkpoint. `?debug=1` and the
 screenshot director never write progress.

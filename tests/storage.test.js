@@ -88,3 +88,31 @@ test("free play and daily record their own bests", () => {
   assert.deepStrictEqual([p.dailyDate, p.dailyScore, p.dailyDone], ["2026-09-23", 700, 1]);
   assert.ok(!Object.keys(p.chapters).length, "a daily must not record a chapter");
 });
+
+test("real play is logged for pacing: time and games until the first clear, then frozen", () => {
+  const p = blank();
+  const cfg = Object.assign({ mode: "chapter" }, CHAPTERS[1]);
+  Progress.record(p, cfg, { told: false, stars: 0, score: 5000, seconds: 140, checkpoint: { phase: 2, score: 4000, bonus: false }, stats: {} }, 1000);
+  assert.deepStrictEqual({ ...p.paceRun[1] }, { secs: 140, games: 1 });
+  assert.deepStrictEqual({ ...p.resume }, { idx: 1, at: 1000, phase: 2, score: 4000, bonus: false }, "an unfinished story leaves a checkpoint");
+  assert.strictEqual(Progress.resumeFor(p, 1).phase, 2);
+  assert.strictEqual(Progress.resumeFor(p, 0), null);
+  Progress.record(p, cfg, { told: true, stars: 2, score: 60000, seconds: 200, checkpoint: null, stats: {} }, 2000);
+  assert.deepStrictEqual({ ...p.pace[1] }, { secs: 340, games: 2 });
+  assert.ok(!p.paceRun[1], "the running tally moves into the log");
+  assert.strictEqual(Progress.resumeFor(p, 1), null, "a told story clears its checkpoint");
+  Progress.record(p, cfg, { told: true, stars: 3, score: 90000, seconds: 50, checkpoint: null, stats: {} }, 3000);
+  assert.deepStrictEqual({ ...p.pace[1] }, { secs: 340, games: 2 }, "a replay never rewrites the first-clear time");
+});
+
+test("merge keeps the first-clear pace, the longest running tally, and the newest checkpoint", () => {
+  const phone = { ...blank(), pace: { 0: { secs: 150, games: 1 } }, paceRun: { 1: { secs: 90, games: 1 } }, resume: { idx: 1, phase: 2, score: 1, at: 50 } };
+  const pad = { ...blank(), pace: { 1: { secs: 400, games: 3 } }, paceRun: { 1: { secs: 300, games: 2 }, 2: { secs: 60, games: 1 } }, resume: { idx: 2, phase: 1, score: 2, at: 90 } };
+  bothWays(phone, pad, (m) => {
+    assert.deepStrictEqual({ ...m.pace[0] }, { secs: 150, games: 1 });
+    assert.deepStrictEqual({ ...m.pace[1] }, { secs: 400, games: 3 });
+    assert.ok(!m.paceRun[1], "a chapter cleared on either device is no longer running");
+    assert.deepStrictEqual({ ...m.paceRun[2] }, { secs: 60, games: 1 });
+    assert.strictEqual(m.resume.idx, 2, "the newer checkpoint wins");
+  });
+});

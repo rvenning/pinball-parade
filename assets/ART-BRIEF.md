@@ -60,10 +60,19 @@ The renderer draws, bottom to top:
 
 **Must stay procedural (they communicate collision or state):** walls and rails,
 slingshots, posts and the save post, flippers, bumpers (pop bumpers, the idol,
-shells, gears, clouds), stand-up and drop targets and their letters, rollovers,
-spinners, saucers and locks, gates (the drawbridge, the temple door, the plunger
-flap), the pendulum diverter, ramp tracks and their entry arrows, kickback lights,
-wind/current arrows, the ball, and every objective ring. A background may *paint
+shells, gears, the drifting clouds), stand-up and drop targets and their letters
+(the temple stones, totems, pearls, T-I-C-K, S-T-A-R), rollovers, spinners (the
+prayer wheel, the weathervane), saucers and locks (the Keep, the idol's eye, the
+whirlpool's sink, the chest, the toybox, the sky castle), gates (the drawbridge,
+the clockwork door, the plunger flap), the pendulum, ramp tracks and their entry
+arrows, kickback lights, wind/current arrows, the whirlpool's spiral, the ball,
+and every objective ring.
+
+**Things that MOVE.** The story can set these moving, so nothing painted may sit
+where they travel: the castle dragon (its target flies 80 logical px either side
+of its perch at (250, 164)), the three Cloud Kingdom bumpers (two drift ±30 at
+y 232, one ±50 at y 302) and the workshop pendulum. The registration overlays draw
+each mover at both ends of its sweep, dashed purple. A background may *paint
 around* them — stone under the bells, a lawn under the flippers — but must never
 paint a shape that looks like a rail or a target where there is none, and must
 never draw one of these baked in.
@@ -95,7 +104,7 @@ long, thin and brass that could be mistaken for a rail.
 | `table-foregrounds/sea.png` | 800 × 1440 | transparent | |
 | `table-foregrounds/workshop.png` | 800 × 1440 | transparent | |
 | `table-foregrounds/clouds.png` | 800 × 1440 | transparent | |
-| `characters/dragon.png` | 240 × 140 | transparent | castle toy, asleep; drawn in the box centred on logical (184, 118), 120 × 70 |
+| `characters/dragon.png` | 240 × 140 | transparent | castle toy, asleep; drawn in the box centred on logical (250, 118), 120 × 70 (its perch over the gatehouse; once awake it flies 80 either side, so draw it facing left and keep it self-contained) |
 | `characters/dragon-awake.png` | 240 × 140 | transparent | the same box, awake |
 | `characters/automaton.png` | 80 × 120 | transparent | workshop toy, run down; box centred on (58, 300), 40 × 60 |
 | `characters/automaton-awake.png` | 80 × 120 | transparent | marching |
@@ -107,8 +116,21 @@ long, thin and brass that could be mistaken for a rail.
 | `characters/mascot.png` | 400 × 400 | transparent | results fallback for a world without its own mascot |
 | `ui/paper.jpg` | 512 × 512 | opaque, tileable | menu paper texture (reserved) |
 
-Characters sit on layer 2, under every rail and target: the dragon's box overlaps
-the two dragon targets at logical y 166–178, which are always drawn on top.
+Characters sit on layer 2, under every rail and target. The dragon RIDES its
+target: its box moves with it, so both frames must be self-contained sprites
+(no scenery baked around them), facing left, with the target — always drawn on
+top — just under its chin at logical y 156–172.
+
+**Layouts changed on 2026-09-25** (the chapters became stories, and each table
+got its own shape). Moonlight Castle gained the Keep saucer and the flying
+dragon; the Jungle Temple is now built round central stairs with two stones in
+their mouth, the idol's eye under the vine lanes, totems on the left wall and
+the prayer wheel across the right orbit; the Deep Sea has a reef row of shells and
+a whirlpool top centre; the Clockwork Workshop has its gear train across the top,
+the T-I-C-K letters below it and the toybox on the right above the conveyor; the
+Cloud Kingdom has drifting clouds and a rainbow lane up the right-hand side. The
+backgrounds still pass `tools/audit-art.js`, but anything painted to sit "under"
+a mechanism should be checked against the new `docs/geometry/<table>.svg`.
 
 ## 5. Worlds
 

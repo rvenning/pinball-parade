@@ -4,22 +4,14 @@
 
 const AVATARS = ["🦄", "🐉", "🦊", "🐼", "🐙", "🦉", "🐸", "🐰", "🐯", "🦖", "🐧", "🐝"];
 
-const EFFECT_WORDS = {
-  "open:drawbridge": "The drawbridge is down!",
-  "open:templeDoor": "The temple stairs are open!",
-  "wake:dragon": "The dragon is awake!",
-  "wake:idol": "The idol opens its eye!",
-  "lightLock:chest": "The chest is open — lock a ball!",
-  "wake:automaton": "The soldier is marching!",
-  "lightLock:toybox": "The toybox is open — lock a ball!",
-  "lightLock:skyCastle": "The sky castle door is open!",
-};
-
 const todayKey = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 const fmt = (n) => Math.round(n).toLocaleString("en-AU");
+// "×3" after a label, unless the label already says how many
+const countText = (o) => (o.kind === "frenzy" ? ` — ${o.count ? o.count + " in " : ""}${o.timer.secs} seconds`
+  : o.count > 1 && o.kind !== "spell" && !/\d|twice/i.test(o.label) ? ` ×${o.count}` : "");
 const esc = (s) => GK.util.esc(String(s));
 
 // ------------------------------------------------------------------- play --
@@ -111,14 +103,30 @@ const Play = {
         case "ballLost": Sfx.ballLost(); App.banner(e.left > 0 ? `Oh well! ${e.left} ball${e.left === 1 ? "" : "s"} left` : "That was the last ball", 1400); break;
         case "paradeStart": Sfx.parade(); App.banner("PARADE! Double points", 1800); if (!R) { Fx.addShake(4); Fx.confetti(TABLE_W, 260, ["#e0604f", "#d9a441", "#72e6f2", "#f6ecd6"], 40); } break;
         case "paradeEnd": Sfx.paradeEnd(); break;
-        case "objective": {
+        case "phaseStart": {
+          const p = this.cfg.phases[e.idx];
+          // the first phase is on the chapter card already; say it once the ball is out
+          App.banner(p.title, e.idx === 0 ? 1800 : 2400, (e.final ? "Finale · " : "") + p.label, e.idx === 0 ? 700 : 900);
+          App.buildPhaseChip();
+          break;
+        }
+        case "phaseDone": {
           Sfx.objective();
-          const o = this.cfg.objectives[e.idx];
-          const words = (o.effect || []).map((f) => EFFECT_WORDS[f]).find(Boolean);
-          App.banner(words || `${o.label} — done!`, 2000);
+          if (e.jackpot) { App.banner("JACKPOT!", 1600, "+" + fmt(e.value)); if (!R) Fx.text(CX, 330, "+" + fmt(e.value), { color: "#72e6f2", size: 22 }); }
           if (!R) { Fx.addShake(5); Fx.addFlash(0.25, "#fff4d6"); }
           break;
         }
+        case "effect": {
+          // the table visibly changing: a burst where it changed
+          if (!e.id) break;
+          const [x, y] = this.sim.pos(e.id);
+          burst(x, y, e.kind === "open" || e.kind === "lightLock" ? Render.art.glow : "#fff4d6", 16);
+          break;
+        }
+        case "bonusDone": Sfx.rampDone(); App.banner("Bonus star!", 1500, this.cfg.bonus.label); break;
+        case "extraBall": Sfx.saved(); App.banner("Extra ball!", 1500); break;
+        case "storyTold": App.banner("The end!", 2600, "What a story"); break;
+        case "ballBonus": if (!R) Fx.text(CX, 420, `${e.balls} ball${e.balls === 1 ? "" : "s"} in hand +${fmt(e.v)}`, { color: "#fff4d6", size: 15 }); break;
         case "chapterWon": Sfx.chapterWon(); if (!R) Fx.confetti(TABLE_W, TABLE_H, ["#e0604f", "#d9a441", "#72e6f2", "#f6ecd6"], 80); break;
         case "points": if (e.v >= 250 && !R) Fx.text(e.x, e.y, `+${fmt(e.v)}`, { color: "#fff4d6", size: e.v >= 1000 ? 16 : 12 }); break;
       }
@@ -199,8 +207,21 @@ const App = {
     const shot = new URLSearchParams(location.search).get("shot");
     GK.Debug.init({ storage: Storage, title: "PINBALL PARADE" })
       .jump("chapter", CHAPTERS.length, (n) => this.startChapter(n - 1))
-      .action("complete objective", () => { const s = Play.sim; if (s) { const i = s.S.obj.findIndex((o) => !o.done); if (i >= 0) s.complete(i); } })
-      .action("multiball", () => { const s = Play.sim; if (s) { s.serve(true); s.serve(true); } });
+      .action("complete phase", () => { const s = Play.sim; if (s && s.phaseSpec()) s.completePhase(); })
+      .action("multiball", () => { const s = Play.sim; if (s) { s.serve(true); s.serve(true); } })
+      // Real family play, against the designed bands: time and games to a
+      // chapter's first clear (still-running tallies marked "so far").
+      .action("pacing report", () => {
+        if (!this.profile) return alert("Pick a player first.");
+        const p = this.progress(), rows = [];
+        for (const c of CHAPTERS) {
+          const done = (p.pace || {})[c.idx], run = (p.paceRun || {})[c.idx], r = done || run;
+          if (!r) continue;
+          const band = PACE[c.pace];
+          rows.push(`${c.idx + 1}. ${c.title}: ${(r.secs / 60).toFixed(1)} min in ${r.games} game${r.games === 1 ? "" : "s"}${done ? "" : " so far"} (band ${band[0]}–${band[1]})`);
+        }
+        alert(rows.length ? `${this.profile.name}\n` + rows.join("\n") : "No chapters played yet.");
+      });
     for (const l of LAYERS) GK.Debug.action(`${l} on/off`, () => { Render.setLayer(l, !Render.layers[l]); this.applyLayers(); });
     this.applyLayers();
     this.applyLogo();
@@ -326,64 +347,118 @@ const App = {
     this.showScreen("world");
   },
 
-  // Three objectives, shown before play, with the same icons as the HUD.
+  // The story before play: its phases in order (the finale marked), the bonus
+  // and the score star — with the same icons as the HUD.
   chapterCard(idx) {
     Sfx.init(); Sfx.click();
     const c = CHAPTERS[idx], w = WORLDS[c.world];
+    const resume = Progress.resumeFor(this.progress(), idx);
     this.el("cc-kicker").textContent = `${w.name} · Chapter ${c.n}`;
     this.el("cc-title").textContent = c.title;
     this.el("cc-story").textContent = c.story;
     const rows = this.el("cc-objs");
     rows.innerHTML = "";
-    const tags = ["Opens the next chapter", "Second star", `Third star — or score ${fmt(c.scoreTarget)}`];
-    c.objectives.forEach((o, i) => {
+    const row = (icon, head, sub, cls) => {
       const r = document.createElement("div");
-      r.className = "cc-obj" + (i === 0 ? " primary" : "");
-      r.appendChild(Render.icon(o.icon, 40, c.table));
-      r.insertAdjacentHTML("beforeend", `<span><b>${esc(o.label)}${o.count > 1 && o.kind !== "spell" && !/d|twice/i.test(o.label) ? ` <em>×${o.count}</em>` : ""}</b><small>${esc(tags[i])}</small></span>`);
+      r.className = "cc-obj " + (cls || "");
+      r.appendChild(Render.icon(icon, 32, c.table));
+      r.insertAdjacentHTML("beforeend", `<span><b>${head}</b><small>${sub}</small></span>`);
       rows.appendChild(r);
+    };
+    c.phases.forEach((p, i) => {
+      const fin = i === c.phases.length - 1;
+      const past = resume && i < resume.phase;
+      row(p.icon, `${esc(p.title)}`, `${fin ? "<i>Finale</i> · " : ""}${esc(p.label)}${countText(p)}`, "phase" + (fin ? " finale" : "") + (past ? " past" : ""));
     });
-    this.el("cc-play").onclick = () => { GK.UI.closeModal("modal-chapter"); this.startChapter(idx); };
+    if (c.bonus) row(c.bonus.icon, "Bonus star", esc(c.bonus.label) + countText(c.bonus), "bonus");
+    row("score", "Score star", `Score ${fmt(c.scoreTarget)}`, "bonus");
+    const play = this.el("cc-play"), fresh = this.el("cc-fresh");
+    if (resume) {
+      play.textContent = `▶ Carry on: ${c.phases[resume.phase].title}`;
+      play.onclick = () => { GK.UI.closeModal("modal-chapter"); this.startChapter(idx, resume); };
+      fresh.style.display = "";
+      fresh.onclick = () => { GK.UI.closeModal("modal-chapter"); this.startChapter(idx); };
+    } else {
+      play.textContent = "▶ Play";
+      play.onclick = () => { GK.UI.closeModal("modal-chapter"); this.startChapter(idx); };
+      fresh.style.display = "none";
+    }
     GK.UI.openModal("modal-chapter");
   },
 
-  startChapter(idx) { Sfx.init(); Play.start(Object.assign({ mode: "chapter" }, CHAPTERS[idx])); },
+  startChapter(idx, resume) {
+    Sfx.init();
+    const cfg = Object.assign({ mode: "chapter" }, CHAPTERS[idx]);
+    if (resume) cfg.resume = { phase: resume.phase, score: resume.score, bonus: resume.bonus };
+    Play.start(cfg);
+  },
   startFree(table) { Sfx.init(); Sfx.click(); Play.start(freePlayConfig(table)); },
   startDaily() { Sfx.init(); Sfx.click(); Play.start(dailyConfig(todayKey())); },
 
   // ------------------------------------------------------------------ hud --
+  // The HUD holds one phase chip (what the story wants now, with a pip for
+  // every phase) and one small bonus chip. Free play shows the table's name.
   buildHud(cfg, table) {
     const chips = this.el("hud-chips");
     chips.innerHTML = "";
-    if (!cfg.objectives.length) {
+    if (!cfg.phases.length) {
       chips.innerHTML = `<span class="hud-label">Free play · ${esc(WORLDS.find((w) => w.table === cfg.table).name)}</span>`;
+    } else {
+      chips.innerHTML = `<div class="chip phase" id="chip-phase"><span class="ph-icon"></span><span class="ph-text"><span class="ph-label"></span><span class="ph-sub"><span class="ph-pips"></span><span class="chip-n"></span></span></span></div>`;
+      if (cfg.bonus) {
+        const d = document.createElement("div");
+        d.className = "chip bonus"; d.id = "chip-bonus";
+        d.setAttribute("aria-label", "Bonus: " + cfg.bonus.label);
+        d.appendChild(Render.icon(cfg.bonus.icon, 22, cfg.table));
+        d.insertAdjacentHTML("beforeend", `<span class="chip-n"></span>`);
+        chips.appendChild(d);
+      }
+      this.buildPhaseChip();
     }
-    cfg.objectives.forEach((o, i) => {
-      const d = document.createElement("div");
-      d.className = "chip" + (i === 0 ? " primary" : "");
-      d.setAttribute("aria-label", o.label);
-      d.appendChild(Render.icon(o.icon, 26, cfg.table));
-      d.insertAdjacentHTML("beforeend", `<span class="chip-n"></span>`);
-      chips.appendChild(d);
-    });
     this.el("hud-score").textContent = "0";
     this.el("banner").className = "banner";
     this.updateHud();
   },
 
+  buildPhaseChip() {
+    const sim = Play.sim, cfg = Play.cfg, c = this.el("chip-phase");
+    if (!c || !sim) return;
+    const p = sim.phaseSpec() || cfg.phases[cfg.phases.length - 1];
+    const ic = c.querySelector(".ph-icon");
+    ic.replaceChildren(Render.icon(p.icon, 26, cfg.table));
+    c.querySelector(".ph-label").textContent = p.label;
+    c.setAttribute("aria-label", `Phase ${Math.min(sim.S.phase + 1, cfg.phases.length)} of ${cfg.phases.length}: ${p.label}`);
+    c.classList.toggle("finale", sim.S.phase === cfg.phases.length - 1);
+    Play.chipSig = "";
+  },
+
+  // "2/3", a countdown for a timed mode, or a hurry-up's current value.
+  goalText(o, st, S) {
+    if (!st) return "✓";
+    if (o.jackpot) return fmt(Play.sim.jackpotValue());
+    if (o.kind === "spell") return `${(S.spell[o.group] || 0)}/${o.word.length}`;
+    if (o.kind === "score") return fmt(Math.max(0, o.points - S.score));
+    const n = `${Math.min(st.n, o.count || 1)}/${o.count || 1}`;
+    if (o.timer && o.timer.end === "complete") return `${Math.max(0, Math.ceil(o.timer.secs - st.clock))}s` + (o.count ? ` · ${n}` : "");
+    return n;
+  },
+
   updateHud() {
-    const S = Play.sim.S, cfg = Play.cfg;
-    const sig = S.obj.map((o) => `${o.n}${o.done ? "d" : ""}`).join(",") + "|" + S.ballsLeft + "|" + S.score + "|" + Math.round(S.parade.meter * 40) + (S.t < S.parade.until ? "P" : "") + "|" + (Play.sim.readyBall() ? 1 : 0) + (S.t < S.saveUntil ? "s" : "");
+    const sim = Play.sim, S = sim.S, cfg = Play.cfg;
+    const p = sim.phaseSpec();
+    const pv = p && S.ph ? this.goalText(p, S.ph, S) : "✓";
+    const bv = cfg.bonus ? (S.bonus.done ? "✓" : this.goalText(cfg.bonus, S.bonus, S)) : "";
+    const sig = S.phase + ":" + pv + "|" + bv + "|" + S.ballsLeft + "|" + S.score + "|" + Math.round(S.parade.meter * 40) + (S.t < S.parade.until ? "P" : "") + "|" + (sim.readyBall() ? 1 : 0) + (S.t < S.saveUntil ? "s" : "");
     if (sig === Play.chipSig) return;
     Play.chipSig = sig;
-    const chips = this.el("hud-chips").children;
-    cfg.objectives.forEach((o, i) => {
-      const st = S.obj[i], c = chips[i];
-      if (!c) return;
-      c.classList.toggle("done", st.done);
-      const need = o.kind === "score" ? 1 : (o.count || 1);
-      c.querySelector(".chip-n").textContent = st.done ? "✓" : o.kind === "spell" ? `${(S.spell[o.group] || 0)}/${o.word.length}` : `${Math.min(st.n, need)}/${need}`;
-    });
+    const pc = this.el("chip-phase");
+    if (pc) {
+      pc.querySelector(".chip-n").textContent = pv;
+      pc.classList.toggle("done", S.told);
+      pc.querySelector(".ph-pips").innerHTML = cfg.phases.map((_, i) => `<i class="${i < S.phase ? "on" : i === S.phase ? "now" : ""}"></i>`).join("");
+    }
+    const bc = this.el("chip-bonus");
+    if (bc) { bc.querySelector(".chip-n").textContent = bv; bc.classList.toggle("done", S.bonus.done); }
     this.el("hud-balls").innerHTML = Array.from({ length: cfg.balls || 3 }, (_, i) => `<i class="${i < S.ballsLeft ? "on" : ""}"></i>`).join("");
     this.el("hud-score").textContent = fmt(S.score);
     const bar = this.el("parade-bar");
@@ -394,19 +469,24 @@ const App = {
     this.el("save-lamp").classList.toggle("on", S.t < S.saveUntil);
   },
 
-  banner(text, ms) {
+  // A headline and an optional smaller line. `after` delays it a moment, so a
+  // phase-done flourish and the next phase's title do not trample each other.
+  banner(text, ms, sub, after) {
     const b = this.el("banner");
-    b.textContent = text;
-    b.className = "banner show";
-    clearTimeout(this._bt);
-    this._bt = setTimeout(() => { b.className = "banner"; }, ms);
+    const show = () => {
+      b.innerHTML = esc(text) + (sub ? `<small>${esc(sub)}</small>` : "");
+      b.className = "banner show";
+      clearTimeout(this._bt);
+      this._bt = setTimeout(() => { b.className = "banner"; }, ms);
+    };
+    clearTimeout(this._ba);
+    if (after) this._ba = setTimeout(show, after); else show();
   },
 
   fillPause() {
-    const done = Play.sim && Play.sim.S.obj[0] && Play.sim.S.obj[0].done;
-    this.el("btn-finish").style.display = done ? "" : "none";
+    const sim = Play.sim, p = sim && sim.phaseSpec();
+    this.el("pause-story").textContent = p ? `Chapter so far: phase ${sim.S.phase + 1} of ${Play.cfg.phases.length}, “${p.title}”.` : "The ball is waiting right where you left it.";
   },
-  finishNow() { GK.UI.closeModal("modal-pause"); Play.paused = false; Play.sim.finish(true, 0.1); },
   restart() { const cfg = Play.cfg; Play.quit(); Play.start(cfg); },
   exitGame() {
     const cfg = Play.cfg;
@@ -429,19 +509,27 @@ const App = {
     stars.innerHTML = cfg.mode === "chapter" ? [0, 1, 2].map((i) => `<span class="star${i < res.stars ? " on" : ""}">★</span>`).join("") : "";
     const objs = this.el("res-objs");
     objs.innerHTML = "";
-    (cfg.objectives || []).forEach((o, i) => {
+    const row = (icon, text, done) => {
       const r = document.createElement("div");
-      r.className = "res-obj" + (res.done[i] ? " done" : "");
-      r.appendChild(Render.icon(o.icon, 28, cfg.table));
-      r.insertAdjacentHTML("beforeend", `<span>${esc(o.label)}</span><b>${res.done[i] ? "✓" : "·"}</b>`);
+      r.className = "res-obj" + (done ? " done" : "");
+      r.appendChild(Render.icon(icon, 28, cfg.table));
+      r.insertAdjacentHTML("beforeend", `<span>${esc(text)}</span><b>${done ? "✓" : "·"}</b>`);
       objs.appendChild(r);
-    });
+    };
+    (cfg.phases || []).forEach((p, i) => row(p.icon, p.title, i < res.phase));
+    if (cfg.bonus) row(cfg.bonus.icon, "Bonus · " + cfg.bonus.label, res.bonus);
     next.style.display = "none";
     if (cfg.mode === "chapter") {
-      title.textContent = res.won ? (res.stars === 3 ? "A perfect tale!" : "Tale told!") : "Nearly there!";
+      title.textContent = res.won ? (res.stars === 3 ? "A perfect tale!" : "Tale told!") : "To be continued…";
+      const cp = res.checkpoint && res.checkpoint.phase > 0 ? cfg.phases[res.checkpoint.phase] : null;
       note.textContent = res.won
         ? (res.stars < 3 ? `Another go could win ${3 - res.stars} more star${3 - res.stars === 1 ? "" : "s"}.` : "Every star in this chapter is yours.")
-        : `${cfg.objectives[0].label} to open the next chapter. Have another go!`;
+        : cp ? `Next time the story carries on from “${cp.title}”.` : "Have another go — the story is waiting.";
+      if (!res.won) {
+        next.style.display = "";
+        next.textContent = cp ? `▶ Carry on: ${cp.title}` : "▶ Try again";
+        next.onclick = () => { Sfx.click(); this.startChapter(cfg.idx, Progress.resumeFor(this.progress(), cfg.idx)); };
+      }
       const n = cfg.idx + 1;
       if (res.won && n < CHAPTERS.length && Progress.chapterOpen(p, n)) {
         next.style.display = "";
@@ -460,7 +548,8 @@ const App = {
       title.textContent = "Daily Parade done";
       note.textContent = `Your best today: ${fmt(p.dailyScore)}. A new parade comes tomorrow.`;
     }
-    again.onclick = () => { Sfx.click(); Play.start(cfg); };
+    again.onclick = () => { Sfx.click(); cfg.mode === "chapter" ? this.startChapter(cfg.idx) : Play.start(cfg); };
+    again.textContent = cfg.mode === "chapter" && !res.won ? "↻ Start over" : "↻ Again";
     this.el("res-book").onclick = () => { Sfx.click(); cfg.mode === "chapter" ? this.showWorld(cfg.world) : this.showBook(); };
     this.showScreen("results");
   },

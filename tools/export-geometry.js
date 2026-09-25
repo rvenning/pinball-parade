@@ -33,9 +33,15 @@ for (const t of G.TABLES) {
       case "rollover": case "kickback": case "saucer": circle(e.x, e.y, e.r, "#39f", true); break;
       case "spinner": case "orbit": line([e.a, e.b], 1.5, "#39f", true); break;
       case "ramp": line(e.path, 20, "rgba(255,150,40,0.35)"); line(e.mouth, 1.5, "#39f", true); break;
-      case "field": { const [x0, y0, x1, y1] = e.rect; s.push(`<rect x="${x0 * K}" y="${y0 * K}" width="${(x1 - x0) * K}" height="${(y1 - y0) * K}" fill="rgba(80,200,255,0.12)" stroke="#39f" stroke-dasharray="6 6"/>`); break; }
+      case "field": if (e.pull) { circle(e.pull.x, e.pull.y, e.pull.r, "#39f", true); break; } { const [x0, y0, x1, y1] = e.rect; s.push(`<rect x="${x0 * K}" y="${y0 * K}" width="${(x1 - x0) * K}" height="${(y1 - y0) * K}" fill="rgba(80,200,255,0.12)" stroke="#39f" stroke-dasharray="6 6"/>`); break; }
       case "arm": circle(e.x, e.y, e.len + e.r, "#ea3", true); break;
       case "toy": s.push(`<rect x="${(e.x - e.w / 2) * K}" y="${(e.y - e.h / 2) * K}" width="${e.w * K}" height="${e.h * K}" fill="rgba(200,120,255,0.12)" stroke="#a6f" stroke-dasharray="4 4"/>`); break;
+    }
+    // a mover (the flying dragon, drifting clouds) at both ends of its sweep
+    if (e.move) for (const u of [-1, 1]) {
+      const ox = e.move.dx * u, oy = e.move.dy * u;
+      if (e.a) line([[e.a[0] + ox, e.a[1] + oy], [e.b[0] + ox, e.b[1] + oy]], (e.r || 3) * 2, "#a6f", true);
+      else circle(e.x + ox, e.y + oy, e.r, "#a6f", true);
     }
   }
   for (const f of t.flippers) {

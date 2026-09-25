@@ -157,6 +157,18 @@ h1, h2, h3 { font-weight: 800; }
 .cc-obj { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; align-items: center; padding: 8px 12px; border-radius: 14px; background: rgba(255,255,255,.06); }
 .cc-obj.primary { background: rgba(217,164,65,.18); outline: 2px solid rgba(217,164,65,.55); }
 .cc-obj canvas { width: 40px; height: 40px; }
+/* the story as a numbered path: phases joined by a thread, the finale in brass */
+.cc-objs { counter-reset: phase; gap: 6px; }
+.cc-obj.phase, .cc-obj.bonus { grid-template-columns: 32px minmax(0, 1fr); gap: 10px; padding: 6px 12px 6px 10px; }
+.cc-obj.phase canvas, .cc-obj.bonus canvas { width: 32px; height: 32px; }
+.cc-obj.phase b::before { counter-increment: phase; content: counter(phase) " · "; color: var(--brass-lite); }
+.cc-obj.phase b { font-size: 16px; }
+.cc-obj.finale { background: rgba(217,164,65,.18); outline: 2px solid rgba(217,164,65,.55); }
+.cc-obj.past { opacity: .5; }
+.cc-obj.bonus { background: transparent; border: 1.5px dashed rgba(255,255,255,.18); }
+.cc-obj.bonus b { font-size: 14px; color: var(--brass-lite); }
+.cc-obj small i { font-style: normal; font-weight: 800; color: var(--brass-lite); }
+.chapter-card { max-height: 92vh; overflow-y: auto; }
 .cc-obj b { display: block; font-size: 17px; color: var(--cream); }
 .cc-obj b em { font-style: normal; color: var(--cyan); }
 .cc-obj small { display: block; font-size: 13px; color: var(--dim); }
@@ -178,6 +190,21 @@ h1, h2, h3 { font-weight: 800; }
 .chip canvas { width: 26px; height: 26px; flex: none; }
 .chip-n { font-size: 15px; font-weight: 800; color: var(--cream); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .chip.done { background: rgba(26,130,83,.55); border-color: #6fd39e; }
+/* the phase chip: icon, what to do now, and a pip per phase */
+.chip.phase { flex: 1 1 auto; border-radius: 14px; border-color: rgba(217,164,65,.7); padding: 2px 8px 2px 3px; gap: 6px; }
+.chip.phase.finale { border-color: var(--cyan); box-shadow: 0 0 0 1px rgba(114,230,242,.35) inset; }
+.ph-icon { flex: none; display: flex; }
+.ph-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.1; }
+.ph-label { font-size: 14px; font-weight: 800; color: var(--cream); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ph-sub { display: flex; align-items: center; gap: 6px; }
+.ph-sub .chip-n { font-size: 13px; color: var(--cyan); }
+.ph-pips { display: flex; gap: 3px; }
+.ph-pips i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.18); }
+.ph-pips i.on { background: var(--brass); }
+.ph-pips i.now { background: var(--cyan); }
+.chip.bonus { flex: none; padding: 2px 7px 2px 3px; border-style: dashed; }
+.chip.bonus canvas { width: 22px; height: 22px; }
+.chip.bonus .chip-n { font-size: 13px; }
 .hud-right { display: flex; flex-direction: column; align-items: flex-end; flex: none; }
 .hud-balls { display: flex; gap: 3px; }
 .hud-balls i { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,.14); }
@@ -198,6 +225,7 @@ h1, h2, h3 { font-weight: 800; }
   transition: opacity .18s, transform .18s;
 }
 .banner.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.banner small { display: block; font-size: 14px; font-weight: 700; color: var(--brass-lite); margin-top: 2px; }
 .save-lamp {
   position: absolute; left: 50%; bottom: calc(4px + env(safe-area-inset-bottom)); transform: translateX(-50%);
   font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,.2); pointer-events: none;

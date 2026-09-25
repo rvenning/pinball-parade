@@ -15,13 +15,25 @@ const PARADE = { perBumper: 0.1, perSling: 0.025, decay: 0.03, duration: 10, mul
 const PTS = {
   bumper: 100, sling: 10, target: 250, drop: 400, bank: 2500, rollover: 200, lanes: 2000,
   spin: 30, ramp: 1500, saucer: 750, lock: 2500, multiball: 5000, orbit: 600, objective: 5000, spell: 3000,
+  phase: 5000, bonus: 5000, ballBonus: 5000,
 };
 const LAUNCH = { vMin: 1020, vMax: 1480, tapPower: 0.85, tapTime: 0.16, chargeTime: 0.9 };
 const STUCK = { window: 3.0, radius: 12, nudges: 2 };
 const KICK_RELIGHT = { gentle: 1.0, auto: 2.5, slow: 20 };
-// A forgiving table can keep a ball alive for a long time, so a chapter whose
-// story is already told wraps itself up rather than running forever.
-const AFTER_PRIMARY = 180;
+// Effects that change what the table IS (replayed when a chapter resumes from
+// a checkpoint) versus one-off gifts that belong to the moment (not replayed).
+const TRANSIENT_FX = ["save", "extra", "kick"];
+
+// A mover's offset from its authored position, and its velocity. Its clock
+// `mt` only advances while it is moving, so stopping one freezes it in place
+// rather than snapping it home through the ball.
+function moverOffset(e, st) {
+  const m = e.move;
+  if (!m) return [0, 0, 0, 0];
+  const w = (2 * Math.PI) / m.period, ph = w * (st.mt || 0) + (m.phase || 0);
+  const k = Math.sin(ph), v = st.moving ? Math.cos(ph) * w : 0;
+  return [m.dx * k, m.dy * k, m.dx * v, m.dy * v];
+}
 
 // ---- compile a table into collision primitives, once --------------------
 function compileTable(t) {
@@ -33,8 +45,15 @@ function compileTable(t) {
     p.y0 = Math.min(p.ay, p.by) - p.r - R; p.y1 = Math.max(p.ay, p.by) + p.r + R;
     return p;
   };
-  const cap = (el, a, b, r, extra) => prims.push(box(Object.assign({ k: "cap", el: el.id, type: el.type, ax: a[0], ay: a[1], bx: b[0], by: b[1], r }, extra)));
-  const circ = (el, extra) => prims.push(box(Object.assign({ k: "circ", el: el.id, type: el.type, ax: el.x, ay: el.y, bx: el.x, by: el.y, r: el.r }, extra)));
+  // A mover's box covers its whole sweep; collide() shifts it to where it is now.
+  const sweep = (el, p) => {
+    if (!el.move) return p;
+    const ax = Math.abs(el.move.dx), ay = Math.abs(el.move.dy);
+    p.mv = el; p.x0 -= ax; p.x1 += ax; p.y0 -= ay; p.y1 += ay;
+    return p;
+  };
+  const cap = (el, a, b, r, extra) => prims.push(sweep(el, box(Object.assign({ k: "cap", el: el.id, type: el.type, ax: a[0], ay: a[1], bx: b[0], by: b[1], r }, extra))));
+  const circ = (el, extra) => prims.push(sweep(el, box(Object.assign({ k: "circ", el: el.id, type: el.type, ax: el.x, ay: el.y, bx: el.x, by: el.y, r: el.r }, extra))));
   for (const el of t.elements) {
     switch (el.type) {
       case "wall": for (let i = 0; i + 1 < el.pts.length; i++) cap(el, el.pts[i], el.pts[i + 1], el.r); break;
@@ -58,6 +77,7 @@ function compileTable(t) {
   t._sensors = sensors;
   t._arms = t.elements.filter((e) => e.type === "arm");
   t._fields = t.elements.filter((e) => e.type === "field");
+  t._movers = t.elements.filter((e) => e.move || e.type === "arm" || e.timed);
   for (const e of t.elements) if (e.type === "ramp") {
     let L = 0; e._seg = [];
     for (let i = 0; i + 1 < e.path.length; i++) {
@@ -77,9 +97,15 @@ function rampPoint(ramp, s) {
   return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
 }
 
-function armAngle(arm, t) { return arm.a0 + arm.amp * Math.sin((2 * Math.PI * t) / arm.period); }
-function armOmega(arm, t) { return arm.amp * ((2 * Math.PI) / arm.period) * Math.cos((2 * Math.PI * t) / arm.period); }
-function timedClosed(gate, t) { return gate.timed ? (t % gate.timed.period) < gate.timed.closed : false; }
+// Pendulums and clockwork doors keep time on their element's own clock, which
+// only runs while the story has them "moving": a chapter can start the
+// pendulum swinging, or stop the clockwork door, and nothing jumps.
+function armAngle(arm, st) { return arm.a0 + arm.amp * Math.sin((2 * Math.PI * (st.mt || 0)) / arm.period); }
+function armOmega(arm, st) { return st.moving ? arm.amp * ((2 * Math.PI) / arm.period) * Math.cos((2 * Math.PI * (st.mt || 0)) / arm.period) : 0; }
+function timedClosed(gate, st) { return gate.timed && st.moving ? ((st.mt || 0) % gate.timed.period) < gate.timed.closed : false; }
+// A gate is shut when the story closed it — or, while its clockwork is
+// running, whenever its timer says so.
+function gateShut(gate, st) { return gate.timed && st.moving ? timedClosed(gate, st) : !!st.closed; }
 function fieldOn(f, t) { return !f.pulse || (t % f.pulse.period) < f.pulse.on; }
 
 // ---- the simulation -------------------------------------------------------
@@ -88,15 +114,18 @@ function Sim(table, cfg, S) {
   this.cfg = cfg;
   this.input = { left: false, right: false, launch: false };
   this.events = [];
-  this.objEls = (cfg.objectives || []).map((o) => this.membersOf(o));
-  this.S = S || this.fresh();
+  this.phases = cfg.phases || [];
+  this.phaseEls = this.phases.map((p) => this.membersOf(p));
+  this.bonusEls = cfg.bonus ? this.membersOf(cfg.bonus) : [];
+  if (S) this.S = S;
+  else { this.S = this.fresh(); this.beginStory(); }
 }
 
 Sim.prototype.membersOf = function (o) {
   const t = this.table;
   if (o.id) return t.byId[o.id] ? [o.id] : [];
   if (o.group) return t.elements.filter((e) => e.group === o.group).map((e) => e.id);
-  if (o.kind === "lock" || o.kind === "multiball") return (this.cfg.state.lock || []).concat(t.elements.filter((e) => e.type === "saucer").map((e) => e.id)).filter((v, i, a) => a.indexOf(v) === i);
+  if (o.kind === "lock" || o.kind === "multiball") return t.elements.filter((e) => e.type === "saucer").map((e) => e.id);
   if (o.kind === "parade") return t.elements.filter((e) => e.type === "bumper").map((e) => e.id);
   return [];
 };
@@ -105,11 +134,14 @@ Sim.prototype.fresh = function () {
   const st = this.cfg.state || {};
   const el = {};
   for (const e of this.table.elements) {
-    el[e.id] = { hidden: false, down: false, closed: false, lit: false, flash: -9, cool: 0, hits: 0, awake: false, spin: 0, spinV: 0, lock: false };
+    el[e.id] = { hidden: false, down: false, closed: false, lit: false, flash: -9, cool: 0, hits: 0, awake: false, spin: 0, spinV: 0, lock: false, moving: false, mt: 0 };
   }
-  for (const id of st.hidden || []) if (el[id]) el[id].hidden = true;
-  for (const id of st.closed || []) if (el[id]) el[id].closed = true;
-  for (const id of st.lock || []) if (el[id]) el[id].lock = true;
+  for (const id of st.hidden || []) this.ids(id).forEach((k) => { el[k].hidden = true; });
+  for (const id of st.closed || []) this.ids(id).forEach((k) => { el[k].closed = true; });
+  for (const id of st.lock || []) this.ids(id).forEach((k) => { el[k].lock = true; });
+  for (const id of st.moving || []) this.ids(id).forEach((k) => { el[k].moving = true; });
+  for (const id of st.awake || []) this.ids(id).forEach((k) => { el[k].awake = true; });
+  for (const id of st.down || []) this.ids(id).forEach((k) => { el[k].down = true; });
   el.savePost.hidden = !st.savePost;
   const kb = st.kickback || "auto";
   el.kickL.lit = el.kickR.lit = kb !== "off";
@@ -125,12 +157,22 @@ Sim.prototype.fresh = function () {
     queue: [{ at: 0.35, what: "serve" }],
     locked: 0,
     parade: { meter: 0, until: 0, count: 0 },
-    obj: (this.cfg.objectives || []).map(() => ({ n: 0, done: false, seen: {}, at: 0 })),
+    // the story: which phase is current, and its own progress
+    phase: 0, ph: null, told: false, reached: 0,
+    bonus: { n: 0, seen: {}, done: false },
     spell: {},
     charge: -1,
     over: false, won: false, endAt: 0,
     stats: { bumpers: 0, targets: 0, ramps: 0, locks: 0, multiballs: 0, parades: 0, drains: 0, saves: 0, spins: 0, rescues: 0, launches: 0 },
+    pace: [],        // seconds at which each phase was finished (the pacing instrument)
+    phaseTime: [],   // seconds spent in each phase, so a slow phase shows up by name
   };
+};
+
+// "id" or "@group" → element ids.
+Sim.prototype.ids = function (ref) {
+  if (ref[0] === "@") return this.table.elements.filter((e) => e.group === ref.slice(1)).map((e) => e.id);
+  return this.table.byId[ref] ? [ref] : [];
 };
 
 Sim.prototype.clone = function () {
@@ -171,53 +213,142 @@ Sim.prototype.feedParade = function (amt) {
   }
 };
 
-// Objective bookkeeping. `key` is the element that fired; amount the count.
+// ------------------------------------------------------------------ story --
+// A chapter is a short story told in PHASES. Only the current phase counts
+// and only its mechanisms are lit; finishing one changes the table (a gate
+// opens, a dragon takes off) and starts the next. The last phase is the
+// finale. Alongside runs one BONUS side quest, and the score target.
+Sim.prototype.phaseSpec = function () { return this.phases[this.S.phase] || null; };
+
+Sim.prototype.beginStory = function () {
+  const S = this.S, r = this.cfg.resume;
+  if (!this.phases.length) return;
+  if (r && r.phase > 0 && r.phase < this.phases.length) {
+    // Resume at a checkpoint: the table is put back the way the story left it.
+    for (let i = 0; i < r.phase; i++) {
+      const p = this.phases[i];
+      for (const fx of p.start || []) if (!TRANSIENT_FX.includes(fx.split(":")[0])) this.effect(fx, true);
+      // a door of keep-down stones that this phase toppled is still down
+      if (p.kind === "bank") for (const e of this.table.elements) if (e.group === p.group && e.type === "drop" && e.keep) S.el[e.id].down = true;
+      for (const fx of p.effect || []) if (!TRANSIENT_FX.includes(fx.split(":")[0])) this.effect(fx, true);
+    }
+    S.phase = r.phase; S.reached = r.phase;
+    S.score = r.score || 0;
+    if (r.bonus) S.bonus.done = true;
+  }
+  this.startPhase();
+};
+
+Sim.prototype.startPhase = function () {
+  const S = this.S, p = this.phaseSpec();
+  S.ph = { n: 0, seen: {}, at: S.t, clock: 0, score0: S.score };
+  S.spell = {};
+  for (const fx of p.start || []) this.effect(fx);
+  // Every new phase is a fresh start: a little ball save and the kickbacks
+  // lit again, so a long chapter never grinds a child down.
+  const st = this.cfg.state || {};
+  const save = p.save !== undefined ? p.save : (st.phaseSave || 0);
+  if (save > 0 && S.phase > 0) S.saveUntil = Math.max(S.saveUntil, S.t + save);
+  if (S.phase > 0 && (st.kickback || "auto") !== "off") for (const id of ["kickL", "kickR"]) { S.el[id].lit = true; S.el[id].relight = 0; }
+  this.emit("phaseStart", { idx: S.phase, final: S.phase === this.phases.length - 1 });
+  if (p.kind === "score") this.progress("score", null, 0);
+};
+
+// The value a hurry-up phase is worth right now: it counts down from `from`
+// to `to` over the phase timer, then waits there. It is never lost.
+Sim.prototype.jackpotValue = function () {
+  const p = this.phaseSpec(), S = this.S;
+  if (!p || !p.jackpot) return 0;
+  const secs = (p.timer && p.timer.secs) || 20;
+  const u = Math.min(1, S.ph.clock / secs);
+  return Math.round((p.jackpot.from + (p.jackpot.to - p.jackpot.from) * u) / 10) * 10;
+};
+
+Sim.prototype.completePhase = function () {
+  const S = this.S, p = this.phaseSpec();
+  if (!p || S.told) return;
+  const final = S.phase === this.phases.length - 1;
+  const v = p.jackpot ? this.jackpotValue() : PTS.phase;
+  this.add(v, CX, 330, p.jackpot ? "jackpot" : "phase");
+  for (const fx of p.effect || []) this.effect(fx);
+  S.pace.push(Math.round(S.t));
+  this.emit("phaseDone", { idx: S.phase, final, value: v, jackpot: !!p.jackpot });
+  S.phase++;
+  S.reached = S.phase;
+  if (!final) { this.startPhase(); return; }
+  // The story is told: bank a bonus for every ball still in hand, and end
+  // on the high note rather than playing on to a drain.
+  S.told = true; S.ph = null;
+  const bb = PTS.ballBonus * Math.max(0, S.ballsLeft);
+  if (bb) { S.score += bb; this.emit("ballBonus", { v: bb, balls: S.ballsLeft }); }
+  this.emit("storyTold", {});
+  if (this.cfg.mode !== "free") this.finish(true, 3.2);
+};
+
+// Goal bookkeeping for the current phase and the bonus. `key` is the element
+// that fired; `amount` the count.
 Sim.prototype.progress = function (kind, key, amount) {
-  const S = this.S, objs = this.cfg.objectives || [];
-  for (let i = 0; i < objs.length; i++) {
-    const o = objs[i], st = S.obj[i];
-    if (st.done || o.kind !== kind) continue;
-    if (kind === "score") {
-      if (S.score >= o.points) this.complete(i);
-      continue;
-    }
-    if (key) {
-      const el = this.table.byId[key];
-      if (o.id && o.id !== key) continue;
-      if (o.group && (!el || el.group !== o.group)) continue;
-    }
-    if (kind === "all") {
-      st.seen[key] = 1;
-      const members = this.objEls[i].filter((id) => !S.el[id].hidden);
-      if (members.every((id) => st.seen[id])) { st.n++; st.seen = {}; this.emit("allLit", { idx: i }); }
-    } else {
-      st.n += amount;
-    }
-    if (st.n >= (o.count || 1)) this.complete(i);
+  const S = this.S;
+  const p = this.phaseSpec();
+  if (p && S.ph && !S.told && this.goalStep(p, S.ph, this.phaseEls[S.phase], kind, key, amount)) this.completePhase();
+  const b = this.cfg.bonus;
+  if (b && !S.bonus.done && this.goalStep(b, S.bonus, this.bonusEls, kind, key, amount)) {
+    S.bonus.done = true;
+    this.add(PTS.bonus, undefined, undefined);
+    for (const fx of b.effect || []) this.effect(fx);
+    this.emit("bonusDone", {});
   }
 };
 
-Sim.prototype.complete = function (i) {
-  const S = this.S, o = this.cfg.objectives[i], st = S.obj[i];
-  if (st.done) return;
-  st.done = true; st.n = Math.max(st.n, o.count || 1); st.at = S.t;
-  this.add(PTS.objective, undefined, undefined);
-  for (const fx of o.effect || []) this.effect(fx);
-  this.emit("objective", { idx: i, effect: o.effect || [] });
-  const done = S.obj.map((x) => x.done);
-  if (starsFor(this.cfg, done, S.score) === 3 && this.cfg.mode !== "daily") this.finish(true, 1.6);
+// One goal, one event: returns true when the goal is now complete.
+Sim.prototype.goalStep = function (o, st, members, kind, key, amount) {
+  const k = o.kind === "frenzy" ? (o.on || "hit") : o.kind;
+  if (k !== kind) return false;
+  // a frenzy with no count simply runs its clock: the hits are the score
+  if (o.kind === "frenzy" && !o.count) { if (key && (this.table.byId[key].group === o.group || o.id === key)) st.n += amount; return false; }
+  if (kind === "score") return this.S.score - (o.fromPhase ? st.score0 || 0 : 0) >= o.points;
+  if (key) {
+    const el = this.table.byId[key];
+    if (o.id && o.id !== key) return false;
+    if (o.group && (!el || el.group !== o.group)) return false;
+  }
+  if (kind === "all") {
+    st.seen[key] = 1;
+    const live = members.filter((id) => !this.S.el[id].hidden);
+    if (live.every((id) => st.seen[id])) { st.n++; st.seen = {}; this.emit("allLit", {}); }
+  } else st.n += amount;
+  return st.n >= (o.count || 1);
 };
 
-Sim.prototype.effect = function (fx) {
-  const [kind, id] = fx.split(":");
-  const el = this.S.el[id];
-  if (!el) return;
-  if (kind === "open") el.closed = false;
-  if (kind === "close") el.closed = true;
-  if (kind === "show") el.hidden = false;
-  if (kind === "wake") el.awake = true;
-  if (kind === "lightLock") el.lock = true;
-  this.emit("effect", { kind, id });
+// What the current phase multiplies (a frenzy makes its group worth more).
+Sim.prototype.boost = function (id) {
+  const p = this.phaseSpec();
+  if (!p || p.kind !== "frenzy" || !this.S.ph) return 1;
+  const el = this.table.byId[id];
+  return el && (p.group ? el.group === p.group : p.id === id) ? (p.mult || 5) : 1;
+};
+
+Sim.prototype.effect = function (fx, quiet) {
+  const [kind, ref] = fx.split(":");
+  const S = this.S;
+  if (kind === "save") { S.saveUntil = Math.max(S.saveUntil, S.t + (+ref || 10)); if (!quiet) this.emit("effect", { kind }); return; }
+  if (kind === "extra") { S.ballsLeft++; if (!quiet) this.emit("extraBall", {}); return; }
+  if (kind === "kick") { for (const id of ["kickL", "kickR"]) { S.el[id].lit = true; S.el[id].relight = 0; } return; }
+  for (const id of this.ids(ref || "")) {
+    const el = S.el[id];
+    if (kind === "open") el.closed = false;
+    if (kind === "close") el.closed = true;
+    if (kind === "show") el.hidden = false;
+    if (kind === "hide") el.hidden = true;
+    if (kind === "wake") el.awake = true;
+    if (kind === "sleep") el.awake = false;
+    if (kind === "lightLock") el.lock = true;
+    if (kind === "unlock") el.lock = false;
+    if (kind === "move") el.moving = true;
+    if (kind === "still") el.moving = false;
+    if (kind === "raise") this.raiseDrop(id);
+    if (!quiet) this.emit("effect", { kind, id });
+  }
 };
 
 Sim.prototype.finish = function (won, delay) {
@@ -229,15 +360,21 @@ Sim.prototype.finish = function (won, delay) {
 };
 
 Sim.prototype.result = function () {
-  const S = this.S, done = S.obj.map((x) => x.done);
-  const primary = this.cfg.mode === "free" ? true : !!done[0];
+  const S = this.S, free = this.cfg.mode === "free";
+  const told = free ? true : S.told;
   return {
     mode: this.cfg.mode || "chapter",
-    won: primary && (this.cfg.mode !== "free"),
+    won: !free && told,
+    told,
     score: S.score,
-    done,
-    stars: this.cfg.mode === "free" ? 0 : starsFor(this.cfg, done, S.score),
+    phase: S.reached, phases: this.phases.length,
+    bonus: S.bonus.done,
+    stars: free ? 0 : starsFor(this.cfg, { told, bonus: S.bonus.done }, S.score),
     seconds: Math.round(S.t),
+    pace: S.pace.slice(),
+    phaseTime: Array.from({ length: this.phases.length }, (_, i) => Math.round(S.phaseTime[i] || 0)),
+    // where to pick the story up if this game ended part-way through it
+    checkpoint: !told && S.ph ? { phase: S.phase, score: S.ph.score0, bonus: S.bonus.done } : null,
     stats: Object.assign({}, S.stats),
   };
 };
@@ -297,9 +434,15 @@ Sim.prototype.drain = function (b) {
     S.saveGranted = false;
     S.queue.push({ at: S.t + 0.9, what: "serve" });
   } else {
-    const primary = this.cfg.mode === "free" || (S.obj[0] && S.obj[0].done);
-    this.finish(!!primary && this.cfg.mode !== "free", 1.2);
+    this.finish(false, 1.2);
   }
+};
+
+// Is a ball actually out on the table? A phase timer only runs while one is,
+// so a drain, a serve or a slow plunge never eats into a hurry-up.
+Sim.prototype.ballInPlay = function () {
+  const P = this.table.plunger;
+  return this.S.balls.some((b) => b.mode === "ride" || b.mode === "held" || (b.mode === "play" && !(b.x > P.lane[0] && b.y > 240)));
 };
 
 // --------------------------------------------------------------- the step --
@@ -311,7 +454,16 @@ Sim.prototype.step = function () {
   const t = S.t;
 
   if (S.endAt && t >= S.endAt) { S.over = true; this.emit("gameOver", {}); return; }
-  if (!S.endAt && S.obj[0] && S.obj[0].done && this.cfg.mode !== "daily" && t - S.obj[0].at > AFTER_PRIMARY) this.finish(true, 0.4);
+
+  // the phase clock: timed modes and hurry-ups
+  const ph = this.phaseSpec();
+  if (ph && !S.told) S.phaseTime[S.phase] = (S.phaseTime[S.phase] || 0) + dt;
+  if (ph && S.ph && !S.told && !S.endAt && this.ballInPlay()) {
+    S.ph.clock += dt;
+    if (ph.timer && S.ph.clock >= ph.timer.secs && ph.timer.end === "complete") this.completePhase();
+  }
+  // movers advance their own clocks
+  for (const m of this.table._movers) { const e = S.el[m.id]; if (e.moving) e.mt += dt; }
 
   // queued serves
   for (let i = S.queue.length - 1; i >= 0; i--) {
@@ -333,6 +485,8 @@ Sim.prototype.step = function () {
   for (const id in S.el) {
     const e = S.el[id];
     if (e.resetAt && t >= e.resetAt) { e.resetAt = 0; this.resetGroup(id); }
+    if (e.retryRaise && t >= e.retryRaise) { e.retryRaise = 0; this.raiseDrop(id); }
+    if (e.relockAt && t >= e.relockAt) { e.relockAt = 0; e.lock = true; this.emit("effect", { kind: "lightLock", id }); }
     if (e.spinV) { e.spin += e.spinV * dt; e.spinV *= Math.exp(-2.2 * dt); if (Math.abs(e.spinV) < 0.3) e.spinV = 0; }
   }
 
@@ -374,6 +528,17 @@ Sim.prototype.step = function () {
   }
 };
 
+// Is a ramp's way in shut? Its door is a gate (shut unless open or ticking
+// open and shut on its clock) or "@bank", a row of drop targets standing in
+// the mouth — shut while any of them is still up.
+Sim.prototype.doorShut = function (e) {
+  const d = e.door;
+  if (!d) return false;
+  const S = this.S;
+  if (d[0] === "@") return this.ids(d).some((id) => !S.el[id].down && !S.el[id].hidden);
+  return S.el[d].closed && !(this.table.byId[d].timed && S.el[d].moving);
+};
+
 Sim.prototype.solid = function (p) {
   const e = this.S.el[p.el];
   if (e.hidden) return false;
@@ -381,7 +546,7 @@ Sim.prototype.solid = function (p) {
   if (p.type === "gate") {
     if (p.oneWay) return true;
     const g = this.table.byId[p.el];
-    return e.closed || timedClosed(g, this.S.t);
+    return gateShut(g, e);
   }
   return true;
 };
@@ -394,6 +559,12 @@ Sim.prototype.moveBall = function (b, dt) {
   let ax = 0, ay = PHYS.G;
   for (const f of this.table._fields) {
     if (S.el[f.id].hidden || !fieldOn(f, t)) continue;
+    if (f.pull) {
+      // a whirlpool: a pull toward its eye, strongest near the middle
+      const { x, y, r, k } = f.pull, dx = x - b.x, dy = y - b.y, d = Math.hypot(dx, dy);
+      if (d < r && d > 1) { const a = k * (1 - d / r) / d; ax += dx * a; ay += dy * a; }
+      continue;
+    }
     const [x0, y0, x1, y1] = f.rect;
     if (b.x >= x0 && b.x <= x1 && b.y >= y0 && b.y <= y1) { ax += f.ax; ay += f.ay; }
   }
@@ -416,7 +587,9 @@ Sim.prototype.collide = function (b) {
   for (const p of this.table._prims) {
     if (b.x < p.x0 || b.x > p.x1 || b.y < p.y0 || b.y > p.y1) continue;
     if (!this.solid(p)) continue;
-    const c = p.k === "circ" ? Physics.circle(b, R, p.ax, p.ay, p.r) : Physics.capsule(b, R, p.ax, p.ay, p.bx, p.by, p.r);
+    let ox = 0, oy = 0, svx = 0, svy = 0;
+    if (p.mv) [ox, oy, svx, svy] = moverOffset(p.mv, S.el[p.el]);
+    const c = p.k === "circ" ? Physics.circle(b, R, p.ax + ox, p.ay + oy, p.r) : Physics.capsule(b, R, p.ax + ox, p.ay + oy, p.bx + ox, p.by + oy, p.r);
     if (!c) continue;
     if (p.oneWay) {
       const side = (b.x - p.ax) * p.oneWay[0] + (b.y - p.ay) * p.oneWay[1];
@@ -425,7 +598,7 @@ Sim.prototype.collide = function (b) {
     const el = S.el[p.el];
     switch (p.type) {
       case "bumper": {
-        Physics.resolve(b, c.nx, c.ny, c.pen, 0, 0, 0.5, 0, p.kick);
+        Physics.resolve(b, c.nx, c.ny, c.pen, svx, svy, 0.5, 0, p.kick);
         if (t >= el.cool) { el.cool = t + 0.09; this.hit(p.el, b, "bumper"); }
         break;
       }
@@ -435,19 +608,19 @@ Sim.prototype.collide = function (b) {
         break;
       }
       case "target": case "drop": {
-        const imp = Physics.resolve(b, c.nx, c.ny, c.pen, 0, 0, 0.5, PHYS.WALL_F, 0);
+        const imp = Physics.resolve(b, c.nx, c.ny, c.pen, svx, svy, 0.5, PHYS.WALL_F, 0);
         if (imp > 45 && t >= el.cool) { el.cool = t + 0.15; this.hit(p.el, b, p.type); }
         break;
       }
       default: {
-        const imp = Physics.resolve(b, c.nx, c.ny, c.pen, 0, 0, PHYS.WALL_E, PHYS.WALL_F, 0);
+        const imp = Physics.resolve(b, c.nx, c.ny, c.pen, svx, svy, PHYS.WALL_E, PHYS.WALL_F, 0);
         if (imp > 320 && t - b.lastThud > 0.12) { b.lastThud = t; this.emit("thud", { x: b.x, y: b.y, v: imp }); }
       }
     }
   }
   // moving diverters
   for (const arm of this.table._arms) {
-    const ang = armAngle(arm, t), om = armOmega(arm, t);
+    const ast = S.el[arm.id], ang = armAngle(arm, ast), om = armOmega(arm, ast);
     const c = Physics.flipperContact(b, R, { x: arm.x, y: arm.y, len: arm.len, r0: arm.r, r1: arm.r }, ang, om);
     if (c) {
       const imp = Physics.resolve(b, c.nx, c.ny, c.pen, c.svx, c.svy, 0.45, 0.02, 0);
@@ -497,7 +670,7 @@ Sim.prototype.sensors = function (b, px, py) {
           const turns = 1 + Math.floor(Math.hypot(b.vx, b.vy) / 240);
           st.spinV = (st.spinV || 0) + turns * 9;
           S.stats.spins += turns;
-          this.add(PTS.spin * turns, (e.a[0] + e.b[0]) / 2, (e.a[1] + e.b[1]) / 2);
+          this.add(PTS.spin * turns * this.boost(e.id), (e.a[0] + e.b[0]) / 2, (e.a[1] + e.b[1]) / 2);
           this.emit("spin", { id: e.id, turns });
           this.progress("spin", e.id, turns);
         }
@@ -506,7 +679,7 @@ Sim.prototype.sensors = function (b, px, py) {
       case "orbit": {
         if (Physics.crossed(px, py, b.x, b.y, e.a[0], e.a[1], e.b[0], e.b[1]) && b.vx * e.dir[0] + b.vy * e.dir[1] > 0) {
           st.flash = t;
-          this.add(PTS.orbit, b.x, b.y);
+          this.add(PTS.orbit * this.boost(e.id), b.x, b.y);
           this.emit("orbit", { id: e.id, x: b.x, y: b.y });
           this.progress("orbit", e.id, 1);
         }
@@ -555,9 +728,22 @@ Sim.prototype.laneChange = function (dir) {
   for (let i = 0; i < ids.length; i++) this.S.el[ids[i]].lit = lit[(i - dir + ids.length) % ids.length];
 };
 
+// The spelling goal a lettered group is serving right now: the current
+// phase first, then the bonus.
 Sim.prototype.spellGroup = function (group) {
-  const o = (this.cfg.objectives || []).find((x, i) => x.kind === "spell" && x.group === group && !this.S.obj[i].done);
-  return o || null;
+  const p = this.phaseSpec();
+  if (p && this.S.ph && p.kind === "spell" && p.group === group) return p;
+  const b = this.cfg.bonus;
+  if (b && !this.S.bonus.done && b.kind === "spell" && b.group === group) return b;
+  return null;
+};
+
+// Where an element is drawn and hit NOW (movers travel).
+Sim.prototype.pos = function (id) {
+  const e = this.table.byId[id];
+  const [ox, oy] = moverOffset(e, this.S.el[id]);
+  if (e.a) return [(e.a[0] + e.b[0]) / 2 + ox, (e.a[1] + e.b[1]) / 2 + oy];
+  return [e.x + ox, e.y + oy];
 };
 
 Sim.prototype.nextLetter = function (group) {
@@ -571,16 +757,17 @@ Sim.prototype.hit = function (id, b, kind) {
   st.flash = S.t; st.hits++;
   if (kind === "bumper") {
     S.stats.bumpers++;
-    const mult = (this.cfg.twist && this.cfg.twist.bumperMult) || 1;
-    this.add(PTS.bumper * mult, el.x, el.y - el.r - 6);
+    const mult = ((this.cfg.twist && this.cfg.twist.bumperMult) || 1) * this.boost(id);
+    const [bx, by] = this.pos(id);
+    this.add(PTS.bumper * mult, bx, by - el.r - 6);
     this.feedParade(PARADE.perBumper);
-    this.emit("bumper", { id, x: el.x, y: el.y, look: el.look, n: st.hits });
+    this.emit("bumper", { id, x: bx, y: by, look: el.look, n: st.hits, boost: mult > 1 });
     this.progress("hit", id, 1);
     this.progress("all", id, 1);
     return;
   }
   S.stats.targets++;
-  const mx = (el.a[0] + el.b[0]) / 2, my = (el.a[1] + el.b[1]) / 2;
+  const [mx, my] = this.pos(id), boost = this.boost(id);
   // Spelling: only the lit letter counts (and only it drops).
   const sp = el.letter ? this.spellGroup(el.group) : null;
   if (sp) {
@@ -614,10 +801,11 @@ Sim.prototype.hit = function (id, b, kind) {
       this.add(PTS.bank, mx, my - 16, "bank");
       this.emit("bank", { group: el.group, x: mx, y: my });
       this.progress("bank", id, 1);
-      this.scheduleReset(el.group, 1.5);
+      // a bank that is a DOOR (keep) stays down until the story raises it
+      if (!el.keep) this.scheduleReset(el.group, 1.5);
     }
   } else {
-    this.add(PTS.target, mx, my);
+    this.add(PTS.target * boost, mx, my);
     this.emit("target", { id, x: mx, y: my });
   }
   this.progress("hit", id, 1);
@@ -630,8 +818,17 @@ Sim.prototype.scheduleReset = function (group, delay) {
 };
 Sim.prototype.resetGroup = function (id) {
   const g = this.table.byId[id].group;
-  for (const e of this.table.elements) if (e.group === g && e.type === "drop") this.S.el[e.id].down = false;
+  for (const e of this.table.elements) if (e.group === g && e.type === "drop") this.raiseDrop(e.id);
   this.emit("reset", { group: g });
+};
+
+// Stand a drop target back up — but never through a ball: if one is in the
+// way, try again a moment later, when it has rolled clear.
+Sim.prototype.raiseDrop = function (id) {
+  const S = this.S, e = this.table.byId[id], R = PHYS.BALL_R;
+  if (!e || e.type !== "drop" || !S.el[id].down) return;
+  const under = S.balls.some((b) => { if (b.mode !== "play") return false; const q = Physics.closest(b.x, b.y, e.a[0], e.a[1], e.b[0], e.b[1]); return Math.hypot(b.x - q.x, b.y - q.y) < R + e.r + 2; });
+  if (under) S.el[id].retryRaise = S.t + 0.3; else S.el[id].down = false;
 };
 
 Sim.prototype.capture = function (e, b) {
@@ -655,6 +852,9 @@ Sim.prototype.capture = function (e, b) {
     for (const o of S.balls) if (o.mode === "locked" && o.lockAt === e.id) { o.mode = "held"; o.until = S.t + 0.5 + 0.45 * k++; o.x = e.x; o.y = e.y; }
     S.locked = 0;
     S.stats.multiballs++;
+    // Outside a story nothing unlights a lock, and every multiball brings a
+    // ball save — so the lock rests a while, or multiball would never end.
+    if (!this.phases.length) { st.lock = false; st.relockAt = S.t + 45; }
     b.mode = "held"; b.until = S.t + 0.5 + 0.45 * k; b.heldAt = e.id;
     S.saveUntil = Math.max(S.saveUntil, S.t + 10);
     this.add(PTS.multiball, e.x, e.y - 18, "multiball");
@@ -663,7 +863,7 @@ Sim.prototype.capture = function (e, b) {
     return;
   }
   b.mode = "held"; b.until = S.t + (e.hold || 0.8); b.heldAt = e.id;
-  this.add(PTS.saucer, e.x, e.y - 18);
+  this.add(PTS.saucer * this.boost(e.id), e.x, e.y - 18);
   this.emit("saucer", { id: e.id, x: e.x, y: e.y });
 };
 
@@ -675,7 +875,9 @@ Sim.prototype.eject = function (b) {
   b.vx = e.eject[0]; b.vy = e.eject[1];
   b.heldAt = b.lockAt = null;
   b.inside[id] = true;
-  S.el[id].cool = S.t + 0.5;
+  // A saucer never re-catches the ball it has just thrown: an eject that
+  // bounces straight back off a bumper would otherwise juggle forever.
+  S.el[id].cool = S.t + 2.5;
   b.anchor = [b.x, b.y, S.t]; b.nudges = 0;
   this.emit("eject", { id, x: b.x, y: b.y });
 };
@@ -690,7 +892,7 @@ Sim.prototype.ride = function (b, dt) {
     b.anchor = [b.x, b.y, this.S.t]; b.nudges = 0;
     this.S.stats.ramps++;
     const mult = (this.cfg.twist && this.cfg.twist.rampMult) || 1;
-    this.add(PTS.ramp * mult, b.x + 20, b.y, "ramp");
+    this.add(PTS.ramp * mult * this.boost(ramp.id), b.x + 20, b.y, "ramp");
     this.emit("ramp", { id: ramp.id, x: b.x, y: b.y });
     this.progress("ramp", ramp.id, 1);
     return;
@@ -731,28 +933,30 @@ Sim.prototype.stuckCheck = function (b) {
 };
 
 // --------------------------------------------------------- read helpers --
-// Which elements the renderer should ring as "go here" right now.
+// Which elements the renderer should light, and why: "phase" for what the
+// story wants now (the bright ring), "bonus" for the side quest (a quiet one).
 Sim.prototype.objectiveLights = function () {
   const S = this.S, out = {};
-  (this.cfg.objectives || []).forEach((o, i) => {
-    if (S.obj[i].done) return;
+  const light = (o, st, members, tag) => {
     if (o.kind === "spell") {
       const want = o.word[S.spell[o.group] || 0];
       const el = this.table.elements.find((e) => e.group === o.group && e.letter === want);
-      if (el) out[el.id] = i;
+      if (el && !(el.id in out)) out[el.id] = tag;
       return;
     }
-    for (const id of this.objEls[i]) {
+    for (const id of members) {
       if (S.el[id].hidden) continue;
-      const door = this.table.byId[id].door;
-      if (door && S.el[door].closed) continue;        // never light a ramp you cannot get into yet
-      if (o.kind === "all" && S.obj[i].seen[id]) continue;
+      if (this.doorShut(this.table.byId[id])) continue;        // never light a ramp you cannot get into yet
+      if (o.kind === "all" && st.seen[id]) continue;
       if (o.kind === "bank" && S.el[id].down) continue;
       if ((o.kind === "lock" || o.kind === "multiball") && !S.el[id].lock) continue;
-      if (!(id in out)) out[id] = i;
+      if (!(id in out)) out[id] = tag;
     }
-  });
+  };
+  const p = this.phaseSpec();
+  if (p && S.ph && !S.told) light(p, S.ph, this.phaseEls[S.phase], "phase");
+  if (this.cfg.bonus && !S.bonus.done) light(this.cfg.bonus, S.bonus, this.bonusEls, "bonus");
   return out;
 };
 
-if (typeof module !== "undefined") module.exports = { Sim, compileTable, rampPoint, armAngle, LAUNCH, PTS, PARADE, LOCK_N, STUCK, AFTER_PRIMARY };
+if (typeof module !== "undefined") module.exports = { Sim, compileTable, rampPoint, armAngle, gateShut, LAUNCH, PTS, PARADE, LOCK_N, STUCK, moverOffset };

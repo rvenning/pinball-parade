@@ -102,14 +102,20 @@ function childBrain(seed, opts = {}) {
 }
 
 // Value of a game state for the planner.
+// The story counts most (each phase told, then how far into the current one),
+// the bonus a little; score breaks ties.
+function goalFrac(S, o, st) {
+  if (!o || !st) return 0;
+  if (o.kind === "score") return Math.min(1, S.score / o.points);
+  // A ride outlasts the planning horizon, so a ball already on the wanted
+  // ramp counts nearly as done — or the planner would learn to avoid ramps.
+  const riding = o.kind === "ramp" ? S.balls.filter((b) => b.mode === "ride" && b.ride && b.ride.id === o.id).length * 0.9 : 0;
+  return Math.min(1, (st.n + riding) / (o.count || 1) + (o.kind === "all" ? Object.keys(st.seen).length * 0.2 : 0) + (o.kind === "spell" ? (S.spell[o.group] || 0) * 0.2 : 0));
+}
 function progressValue(sim) {
-  const S = sim.S, objs = sim.cfg.objectives || [];
-  let v = 0;
-  objs.forEach((o, i) => {
-    const st = S.obj[i];
-    const w = [3, 2, 1][i] || 1;
-    v += w * (st.done ? 1.4 : Math.min(1, st.n / (o.count || 1)) + (o.kind === "all" ? Object.keys(st.seen).length * 0.2 : 0) + (o.kind === "spell" ? (S.spell[o.group] || 0) * 0.2 : 0));
-  });
+  const S = sim.S;
+  let v = S.phase * 3 + (S.told ? 3 : goalFrac(S, sim.phaseSpec(), S.ph) * 2.5);
+  if (sim.cfg.bonus) v += S.bonus.done ? 1.4 : goalFrac(S, sim.cfg.bonus, S.bonus);
   return v * 6000 + S.score;
 }
 
@@ -122,10 +128,23 @@ function plannerBrain(opts = {}) {
   let plan = null;   // { until, left, right }
   let quietUntil = 0;
   const lost = (s) => s.S.ballsLeft;
-  function rollout(base, act) {
+  // Where the story wants the ball: what is lit on screen right now (the
+  // mouth of a lit ramp, a lit target where it currently is).
+  function aims(sim) {
+    const out = [];
+    for (const [id, why] of Object.entries(sim.objectiveLights())) {
+      if (why !== "phase") continue;
+      const e = sim.table.byId[id];
+      if (e.type === "ramp") out.push([(e.mouth[0][0] + e.mouth[1][0]) / 2 - e.enter[0] * 12, (e.mouth[0][1] + e.mouth[1][1]) / 2 - e.enter[1] * 12]);
+      else if (e.type !== "orbit") out.push(sim.pos(id));
+      else out.push([(e.a[0] + e.b[0]) / 2, (e.a[1] + e.b[1]) / 2]);
+    }
+    return out;
+  }
+  function rollout(base, act, targets) {
     const s = base.clone();
     const L0 = lost(s), start = s.S.t;
-    let minY = 999;
+    let minY = 999, near = 999;
     const n = Math.round(horizon / STEP);
     for (let k = 0; k < n && !s.S.over; k++) {
       const el = s.S.t - start;
@@ -133,9 +152,16 @@ function plannerBrain(opts = {}) {
       s.input.left = on && act.left;
       s.input.right = on && act.right;
       s.step();
-      for (const b of s.S.balls) if (b.mode === "play") minY = Math.min(minY, b.y);
+      for (const b of s.S.balls) if (b.mode === "play" || b.mode === "ride") {
+        minY = Math.min(minY, b.y);
+        for (const [tx, ty] of targets) near = Math.min(near, Math.hypot(b.x - tx, b.y - ty));
+      }
     }
-    let v = progressValue(s) - progressValue(base);
+    // story progress counts in full; raw points only a little, or a loop
+    // shot that farms a saucer beats telling the story
+    const dv = progressValue(s) - progressValue(base), ds = s.S.score - base.S.score;
+    let v = dv - ds * 0.8;
+    v += Math.max(0, 160 - near) * 60;            // aim at what the story has lit
     if (lost(s) < L0) v -= 60000;
     v += Math.max(0, 600 - minY) * 4;           // prefer sending the ball up the table
     const low = s.S.balls.some((b) => b.mode === "play" && b.y > 640 && Math.abs(b.x - 184) < 30);
@@ -166,7 +192,8 @@ function plannerBrain(opts = {}) {
       }
       acts.push({ left: true, right: true, at: 0.04, hold: 0.28 });
       let best = null, bv = -Infinity;
-      for (const a of acts) { const v = rollout(sim, a); if (v > bv) { bv = v; best = a; } }
+      const targets = aims(sim);
+      for (const a of acts) { const v = rollout(sim, a, targets); if (v > bv) { bv = v; best = a; } }
       if (!best.left && !best.right) { quietUntil = t + 0.04; return; }
       plan = Object.assign({ t0: t }, best);
       this.decide(sim);
@@ -202,3 +229,20 @@ function rosalieBrain(seed) {
   return b;
 }
 module.exports.rosalieBrain = rosalieBrain;
+
+// Play one chapter the way the family does: when the balls run out part-way,
+// the next game carries on from the checkpoint, until the story is told.
+// Returns the total seconds across every game, which is what pacing means.
+function story(G, ch, make, seed, maxTries = 12, cap = 1500) {
+  let total = 0, tries = 0, resume = null, r;
+  const phaseTime = ch.phases.map(() => 0);
+  do {
+    const cfg = Object.assign({ mode: "chapter" }, ch, resume ? { resume } : {});
+    r = play(G, cfg, make(seed * 1009 + ch.idx * 31 + tries * 7), { cap });
+    total += r.seconds; tries++;
+    r.phaseTime.forEach((s, i) => { phaseTime[i] += s; });
+    resume = r.checkpoint;
+  } while (!r.told && tries < maxTries);
+  return { total, tries, told: r.told, stars: r.stars, score: r.score, bonus: r.bonus, phaseTime, timedOut: r.timedOut };
+}
+module.exports.story = story;

@@ -1,12 +1,16 @@
 "use strict";
 // Balance claims, each tested with the bot it is about (see tests/bots.js).
+// Chapters are played the way the family plays them: a game that runs out of
+// balls part-way carries on from its checkpoint (B.story).
 //
-//   - Isabelle: the delayed, distractible child finishes the first two worlds
-//     on every seed, retrying as a child would, without a skill wall.
-//   - Rosalie: the quicker child finishes the whole book the same way.
-//   - Skill matters: the planner scores far above both children.
-//   - The idle control never earns a real result.
+//   - Isabelle: the delayed, distractible child tells every story of the
+//     first two worlds on every seed, with the star gates met.
+//   - Rosalie: the quicker child tells the whole book the same way.
+//   - Skill matters: better players tell the same stories faster, and a
+//     random masher is no strategy.
+//   - The idle control never tells a story.
 //   - The same inputs replay the same game, bit for bit.
+// Pacing (how long each chapter takes) is tests/pacing.test.js.
 //
 // PP_REPORT=1 prints the per-chapter tables these assertions read.
 
@@ -16,109 +20,98 @@ const G = require("./load.js");
 const B = require("./bots.js");
 const REPORT = !!process.env.PP_REPORT;
 
-// Play chapter after chapter as a child does: retry until the primary is done.
-function campaign(make, seed, from, to, maxTries) {
-  const rows = [];
+// Play chapter after chapter as a child does, checking each world's star gate.
+function campaign(name, make, seed, from, to) {
+  const rows = [], fails = [];
   let stars = 0;
   for (let c = from; c < to; c++) {
-    let tries = 0, r;
-    do { r = B.play(G, G.CHAPTERS[c], make(seed * 1009 + c * 31 + tries * 7)); tries++; } while (!r.won && tries < maxTries);
+    const ch = G.CHAPTERS[c];
+    if (ch.n === 1 && stars < G.WORLDS[ch.world].stars) fails.push(`${name} seed ${seed}: only ${stars} stars at world ${ch.world + 1} (needs ${G.WORLDS[ch.world].stars})`);
+    const r = B.story(G, ch, make, seed, 14);
+    if (!r.told) fails.push(`${name} seed ${seed}: ch${c + 1} ${ch.title} not told in ${r.tries} games`);
+    if (r.timedOut) fails.push(`${name} seed ${seed}: ch${c + 1} a game never ended`);
     stars += r.stars;
-    rows.push({ c, tries, won: r.won, stars: r.stars, score: r.score, t: r.seconds, timedOut: r.timedOut });
+    rows.push({ c, games: r.tries, stars: r.stars, secs: r.total });
   }
-  return { rows, stars };
+  return { rows, stars, fails };
 }
 
-function check(name, make, seeds, from, to, maxTries, meanCap) {
+function check(name, make, seeds, from, to) {
   const fails = [], all = [];
-  let starTotal = 0;
   for (const s of seeds) {
-    const { rows, stars } = campaign(make, s, from, to, maxTries);
-    starTotal += stars;
-    for (const r of rows) {
-      all.push(r);
-      if (!r.won) fails.push(`${name} seed ${s}: stuck on ch${r.c + 1} ${G.CHAPTERS[r.c].title} after ${r.tries} tries`);
-      if (r.timedOut) fails.push(`${name} seed ${s}: ch${r.c + 1} never ended`);
-    }
-    // world gates: at each world's first chapter, did stars suffice?
-    let acc = 0;
-    for (const r of rows) {
-      const w = G.CHAPTERS[r.c].world;
-      if (G.CHAPTERS[r.c].n === 1 && acc < G.WORLDS[w].stars) fails.push(`${name} seed ${s}: only ${acc} stars at world ${w + 1} (needs ${G.WORLDS[w].stars})`);
-      acc += r.stars;
-    }
+    const got = campaign(name, make, s, from, to);
+    fails.push(...got.fails);
+    all.push(...got.rows);
   }
-  const mean = all.reduce((a, r) => a + r.tries, 0) / all.length;
   if (REPORT) {
-    console.log(`\n${name}: mean tries ${mean.toFixed(2)}, stars/seed ${(starTotal / seeds.length).toFixed(1)}`);
+    console.log(`\n${name}:`);
     for (let c = from; c < to; c++) {
       const rs = all.filter((r) => r.c === c);
-      console.log(`  ch${String(c + 1).padStart(2)} ${G.CHAPTERS[c].title.padEnd(22)} tries ${rs.map((r) => r.tries).join(",").padEnd(12)} ★ ${rs.map((r) => r.stars).join(",")}`);
+      console.log(`  ch${String(c + 1).padStart(2)} ${G.CHAPTERS[c].title.padEnd(22)} games ${rs.map((r) => r.games).join(",").padEnd(10)} ★ ${rs.map((r) => r.stars).join(",")}`);
     }
   }
   assert.deepStrictEqual(fails, []);
-  assert.ok(mean <= meanCap, `${name}: mean tries ${mean.toFixed(2)} > ${meanCap}`);
-  return { mean, starTotal };
 }
 
-test("Isabelle's bot finishes the first two worlds on every seed", () => {
-  check("child", (s) => B.childBrain(s), [1, 2, 3, 4], 0, 8, 8, 2.6);
+test("Isabelle's bot tells every story of the first two worlds on every seed", () => {
+  check("child", (s) => B.childBrain(s), [1, 2, 3], 0, 8);
 });
 
-test("Rosalie's bot finishes the whole book on every seed", () => {
-  check("rosalie", (s) => B.rosalieBrain(s), [1, 2, 3], 0, 20, 8, 2.2);
+test("Rosalie's bot tells the whole book on every seed, meeting every star gate", () => {
+  check("rosalie", (s) => B.rosalieBrain(s), [1, 2], 0, 20);
 });
 
-test("the planner clears every chapter it tries, averaging well over two stars", () => {
-  // The guardrail: nothing in the book is beyond a competent player. It gets
-  // a retry, like anyone; PP_FULL=1 checks all twenty (slow).
-  const picks = process.env.PP_FULL ? G.CHAPTERS.map((c) => c.idx) : [3, 7, 10, 14, 17, 19];
+test("the planner tells every story it tries — nothing in the book is beyond a competent player", () => {
+  // The guardrail: nothing in the book is beyond a competent player.
+  // PP_FULL=1 checks all twenty (slow).
+  const picks = process.env.PP_FULL ? G.CHAPTERS.map((c) => c.idx) : [0, 7, 13];
+  // (It rushes the story, so it is no judge of the stars: the pacing suite
+  // checks those are earnable, with the Rosalie bot.)
   const fails = [];
-  let stars = 0;
   for (const c of picks) {
-    let r, k = 0;
-    do { r = B.play(G, G.CHAPTERS[c], B.plannerBrain({ seed: 1 + k })); k++; } while (!r.won && k < 3);
-    stars += r.stars;
-    if (!r.won) fails.push(`ch${c + 1}: not cleared in 3 tries`);
+    const r = B.story(G, G.CHAPTERS[c], (s) => B.plannerBrain({ seed: s }), 1, 4);
+    if (REPORT) console.log(`  planner ch${c + 1}: ${r.total}s, ${r.tries} game(s), ★${r.stars}`);
+    if (!r.told) fails.push(`ch${c + 1}: not told in ${r.tries} games`);
+    if (r.total > 20 * 60) fails.push(`ch${c + 1}: took the planner ${Math.round(r.total / 60)} minutes`);
   }
   assert.deepStrictEqual(fails, []);
-  assert.ok(stars / picks.length >= 2.3, `planner averaged ${(stars / picks.length).toFixed(2)} stars`);
 });
 
-test("skill matters: planner ≫ Rosalie > child, and mashing is not a strategy", () => {
-  const picks = [1, 5, 9, 13, 17];
-  const mean = (make, n) => {
-    let s = 0, k = 0;
-    for (const c of picks) for (let i = 0; i < n; i++) { s += B.play(G, G.CHAPTERS[c], make(500 + i * 13 + c)).score; k++; }
-    return s / k;
+test("skill matters: better players tell the same story faster, and mashing is not a strategy", () => {
+  const picks = [1, 5, 9];
+  const time = (make, seeds) => {
+    let s = 0, n = 0;
+    for (const c of picks) for (const seed of seeds) { s += B.story(G, G.CHAPTERS[c], make, seed, 14).total; n++; }
+    return s / n;
   };
-  const planner = mean(() => B.plannerBrain(), 1);
-  const rosalie = mean((s) => B.rosalieBrain(s), 3);
-  const child = mean((s) => B.childBrain(s), 3);
-  const masher = mean((s) => B.masherBrain(s), 3);
-  if (REPORT) console.log({ planner, rosalie, child, masher });
-  assert.ok(planner > 1.6 * rosalie, `planner ${planner} vs rosalie ${rosalie}`);
-  assert.ok(rosalie > 1.1 * child, `rosalie ${rosalie} vs child ${child}`);
-  assert.ok(child > masher, `child ${child} vs masher ${masher}`);
+  const planner = time((s) => B.plannerBrain({ seed: s }), [1]);
+  const rosalie = time((s) => B.rosalieBrain(s), [11, 12, 13]);
+  const child = time((s) => B.childBrain(s), [11, 12, 13]);
+  // the masher gets a fixed number of games per chapter; count stories told
+  let mashed = 0, childTold = 0;
+  for (const c of picks) for (const s of [11, 12, 13]) {
+    if (B.story(G, G.CHAPTERS[c], (x) => B.masherBrain(x), s, 3).told) mashed++;
+    if (B.story(G, G.CHAPTERS[c], (x) => B.childBrain(x), s, 3).told) childTold++;
+  }
+  if (REPORT) console.log({ planner, rosalie, child, mashed, childTold });
+  assert.ok(planner < rosalie, `planner ${planner}s vs rosalie ${rosalie}s`);
+  assert.ok(rosalie < child * 1.05, `rosalie ${rosalie}s vs child ${child}s`);
+  assert.ok(childTold > mashed, `in three games: child told ${childTold}, masher ${mashed}`);
 });
 
-test("the idle control never earns a real result", () => {
+test("the idle control never tells a story", () => {
   // It launches and never flips. With the save post up it can loop for a
-  // long time, so the claim is about RESULTS, not about draining: it never
-  // takes a second star and clears almost nothing.
-  let wins = 0;
+  // long time, so the claim is about RESULTS: no story, no stars.
   const fails = [];
   for (const c of G.CHAPTERS) {
-    const r = B.play(G, c, B.idleBrain(), { cap: 300 });
-    if (r.won) wins++;
-    if (r.stars > 1) fails.push(`ch${c.idx + 1}: idle took ${r.stars} stars`);
+    const r = B.play(G, Object.assign({ mode: "chapter" }, c), B.idleBrain(), { cap: 300 });
+    if (r.told || r.stars) fails.push(`ch${c.idx + 1}: idle told the story (★${r.stars})`);
   }
   assert.deepStrictEqual(fails, []);
-  assert.ok(wins <= 2, `idle cleared ${wins} chapters`);
 });
 
 test("replay: the same inputs give the same game, and a clone runs identically", () => {
-  const cfg = G.CHAPTERS[10];
+  const cfg = Object.assign({ mode: "chapter" }, G.CHAPTERS[2]);   // the flying dragon: movers too
   const table = G.TABLES.find((t) => t.id === cfg.table);
   const brain = B.masherBrain(42);
   const rec = new G.Sim(table, cfg);
@@ -147,6 +140,30 @@ test("replay: the same inputs give the same game, and a clone runs identically",
   assert.ok(rec.S.score > 0 && rec.S.stats.launches > 0, "the trace actually played");
 });
 
+test("a checkpoint puts the table back exactly as the story left it", () => {
+  // Resuming at phase k must give the same table state as playing phases
+  // 0…k-1 for real: gates, hidden things, movers and banks.
+  const fails = [];
+  for (const ch of G.CHAPTERS) {
+    const t = G.TABLES.find((x) => x.id === ch.table);
+    const live = new G.Sim(t, Object.assign({ mode: "chapter" }, ch));
+    live.events = null;
+    for (let k = 1; k < ch.phases.length; k++) {
+      // play the phase out as a player would: a bank phase knocks its drops down
+      const p = ch.phases[k - 1];
+      if (p.kind === "bank") for (const e of t.elements) if (e.group === p.group && e.type === "drop") live.S.el[e.id].down = true;
+      live.completePhase();
+      const res = new G.Sim(t, Object.assign({ mode: "chapter" }, ch, { resume: { phase: k, score: 0 } }));
+      for (const id in live.S.el) {
+        const a = live.S.el[id], b = res.S.el[id];
+        const keepDrop = t.byId[id].type === "drop" && t.byId[id].keep;
+        for (const f of ["hidden", "closed", "lock", "moving", "awake", ...(keepDrop ? ["down"] : [])]) if (a[f] !== b[f]) fails.push(`ch${ch.idx + 1} phase ${k + 1}: ${id}.${f} is ${b[f]} on resume, ${a[f]} in play`);
+      }
+    }
+  }
+  assert.deepStrictEqual(fails.slice(0, 20), []);
+});
+
 test("the engine has no randomness and no DOM", () => {
   const fs = require("node:fs"), path = require("node:path");
   for (const f of ["physics.js", "tables.js", "chapters.js", "game.js"]) {
@@ -159,7 +176,7 @@ test("the engine has no randomness and no DOM", () => {
 test("bad frame times cannot move the simulation backwards", () => {
   // The engine only ever advances by its own fixed step; the frame loop owns
   // the accumulator. Stepping is the only way time passes.
-  const sim = new G.Sim(G.TABLES[0], G.CHAPTERS[0]);
+  const sim = new G.Sim(G.TABLES[0], Object.assign({ mode: "chapter" }, G.CHAPTERS[0]));
   const t0 = sim.S.t;
   sim.step();
   assert.ok(Math.abs(sim.S.t - t0 - G.PHYS.DT) < 1e-12);

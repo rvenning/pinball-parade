@@ -440,41 +440,61 @@
    "r": 5
   },
   {
-   "id": "dragon1",
+   "id": "dragonT",
    "type": "target",
    "group": "dragon",
    "a": [
-    146,
-    166
+    237,
+    156
    ],
    "b": [
-    168,
-    176
+    263,
+    172
    ],
-   "r": 5
-  },
-  {
-   "id": "dragon2",
-   "type": "target",
-   "group": "dragon",
-   "a": [
-    200,
-    176
-   ],
-   "b": [
-    222,
-    166
-   ],
-   "r": 5
+   "r": 5,
+   "move": {
+    "dx": 80,
+    "dy": 0,
+    "period": 5.2
+   }
   },
   {
    "id": "dragon",
    "type": "toy",
    "look": "dragon",
-   "x": 184,
+   "x": 250,
    "y": 118,
    "w": 120,
-   "h": 70
+   "h": 70,
+   "follow": "dragonT"
+  },
+  {
+   "id": "keep",
+   "type": "saucer",
+   "x": 90,
+   "y": 272,
+   "r": 12,
+   "hold": 1,
+   "eject": [
+    150,
+    170
+   ]
+  },
+  {
+   "id": "moat",
+   "type": "orbit",
+   "a": [
+    17,
+    330
+   ],
+   "b": [
+    58,
+    330
+   ],
+   "dir": [
+    0,
+    -1
+   ]
   },
   {
    "id": "bridgeW1",

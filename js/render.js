@@ -283,15 +283,19 @@ const Render = {
   drawToys(x, sim) {
     for (const e of sim.table.elements) if (e.type === "toy") {
       const awake = sim.S.el[e.id].awake;
+      // a toy riding a mover (the flying dragon) travels with it
+      const [ox, oy] = e.follow ? moverOffset(sim.table.byId[e.follow], sim.S.el[e.follow]) : [0, 0];
       const img = Assets.character(e.look, awake);
-      if (img) { x.drawImage(img, e.x - e.w / 2, e.y - e.h / 2, e.w, e.h); continue; }
-      if (e.look === "dragon") this.paintDragon(x, e, awake);
-      if (e.look === "automaton") this.paintAutomaton(x, e, awake);
+      x.save(); x.translate(ox, oy);
+      if (img) x.drawImage(img, e.x - e.w / 2, e.y - e.h / 2, e.w, e.h);
+      else if (e.look === "dragon") this.paintDragon(x, e, awake, e.follow && sim.S.el[e.follow].moving);
+      else if (e.look === "automaton") this.paintAutomaton(x, e, awake);
+      x.restore();
     }
   },
 
-  paintDragon(x, e, awake) {
-    const bob = awake ? Math.sin(this.clock * 3) * 2 : Math.sin(this.clock * 1.2) * 1;
+  paintDragon(x, e, awake, flying) {
+    const bob = flying ? Math.sin(this.clock * 7) * 4 : awake ? Math.sin(this.clock * 3) * 2 : Math.sin(this.clock * 1.2) * 1;
     x.save(); x.translate(e.x, e.y + bob); x.globalAlpha = awake ? 1 : 0.8;
     x.fillStyle = "#b8473c";
     x.beginPath(); x.ellipse(0, 6, 44, 18, 0, 0, Math.PI * 2); x.fill();                 // body
@@ -326,7 +330,7 @@ const Render = {
       if (e.type === "gate") {
         const st = S.el[e.id];
         if (e.oneWay) { x.strokeStyle = a.railHi; x.lineWidth = 2; x.lineCap = "round"; x.beginPath(); x.moveTo(...e.a); x.lineTo(...e.b); x.stroke(); continue; }
-        if (st.closed) {
+        if (gateShut(e, st)) {
           // a raised drawbridge / shut door: solid planks with bolts
           x.lineCap = "butt"; x.strokeStyle = "#6b4526"; x.lineWidth = e.r * 2 + 4;
           x.beginPath(); x.moveTo(...e.a); x.lineTo(...e.b); x.stroke();
@@ -341,7 +345,7 @@ const Render = {
         x.strokeStyle = CREAM; x.lineWidth = 1.5; x.beginPath(); x.arc(e.x, e.y, e.r - 2.5, 0, Math.PI * 2); x.stroke();
       }
       if (e.type === "arm") {
-        const ang = armAngle(e, S.t);
+        const ang = armAngle(e, S.el[e.id]);
         this.capsule(x, e.x, e.y, e.x + Math.cos(ang) * e.len, e.y + Math.sin(ang) * e.len, e.r, e.r, a.rail, a.railHi);
         this.drawPost(x, e.x, e.y, 6, a);
       }
@@ -378,6 +382,12 @@ const Render = {
     // Objective rings and lit inserts are the game telling the player where
     // to aim, so they always sit on a dark underlay: a cyan ring over painted
     // cyan water must still read as "hit this".
+    const quiet = (cx, cy, r) => {
+      // the bonus: a thin cream ring that never competes with the story light
+      x.strokeStyle = "rgba(246,236,214,0.45)"; x.lineWidth = 1.2; x.setLineDash([3, 4]);
+      x.beginPath(); x.arc(cx, cy, r + 4, 0, Math.PI * 2); x.stroke(); x.setLineDash([]);
+    };
+    const jack = sim.phaseSpec() && sim.phaseSpec().jackpot ? sim.jackpotValue() : 0;
     const ring = (cx, cy, r) => {
       x.strokeStyle = "rgba(6,8,18,0.6)"; x.lineWidth = 5.5;
       x.beginPath(); x.arc(cx, cy, r + 3 + P * 3, 0, Math.PI * 2); x.stroke();
@@ -386,6 +396,7 @@ const Render = {
     };
     for (const f of t._fields) {
       if (S.el[f.id].hidden) continue;
+      if (f.pull) { this.paintWhirlpool(x, f, now); continue; }
       const on = !f.pulse || (now % f.pulse.period) < f.pulse.on;
       const [x0, y0, x1, y1] = f.rect;
       x.fillStyle = on ? "rgba(140,240,255,0.10)" : "rgba(140,240,255,0.03)";
@@ -396,21 +407,34 @@ const Render = {
         for (let y = y1 - off; y > y0; y -= 40) { const cx = (x0 + x1) / 2; x.beginPath(); x.moveTo(cx - 7, y + 6); x.lineTo(cx, y); x.lineTo(cx + 7, y + 6); x.stroke(); }
       }
     }
-    for (const e of t.elements) {
-      const st = S.el[e.id];
+    for (const e0 of t.elements) {
+      const st = S.el[e0.id];
       if (st.hidden) continue;
       const fresh = now - st.flash < 0.15;
+      // a mover is drawn where it is now
+      let e = e0;
+      if (e0.move) {
+        const [ox, oy] = moverOffset(e0, st);
+        e = Object.assign({}, e0, e0.a ? { a: [e0.a[0] + ox, e0.a[1] + oy], b: [e0.b[0] + ox, e0.b[1] + oy] } : { x: e0.x + ox, y: e0.y + oy });
+      }
+      const lit = lights[e.id] === "phase", side = lights[e.id] === "bonus";
+      if (lit && jack) {
+        const [jx, jy] = e.a ? [(e.a[0] + e.b[0]) / 2, (e.a[1] + e.b[1]) / 2] : e.mouth ? [(e.mouth[0][0] + e.mouth[1][0]) / 2 - e.enter[0] * 46, (e.mouth[0][1] + e.mouth[1][1]) / 2 - e.enter[1] * 46] : [e.x, e.y - (e.r || 10) - 14];
+        x.font = "800 11px 'Baloo 2', sans-serif"; x.textAlign = "center"; x.textBaseline = "middle";
+        x.fillStyle = "rgba(6,8,18,0.75)"; x.fillRect(jx - 26, jy - 8, 52, 16);
+        x.fillStyle = a.glow; x.fillText(Math.round(jack / 1000) + "K", jx, jy);
+      }
       switch (e.type) {
         case "bumper": {
           const squash = fresh ? 0.88 + (now - st.flash) / 0.15 * 0.12 : 1;
-          if (e.id in lights) ring(e.x, e.y, e.r);
+          if (lit) ring(e.x, e.y, e.r); else if (side) quiet(e.x, e.y, e.r);
           this.paintBumper(x, e, squash, fresh, now);
           break;
         }
         case "target": case "drop": {
           const down = e.type === "drop" && st.down;
           if (down) { x.strokeStyle = "rgba(0,0,0,0.5)"; x.lineWidth = 3; x.lineCap = "round"; x.beginPath(); x.moveTo(...e.a); x.lineTo(...e.b); x.stroke(); break; }
-          const lit = e.id in lights;
+          if (side) { x.strokeStyle = "rgba(246,236,214,0.4)"; x.lineWidth = e.r * 2 + 6; x.lineCap = "round"; x.setLineDash([3, 5]); x.beginPath(); x.moveTo(...e.a); x.lineTo(...e.b); x.stroke(); x.setLineDash([]); }
           if (lit) { x.strokeStyle = a.glow; x.globalAlpha = 0.4 + 0.5 * P; x.lineWidth = e.r * 2 + 8; x.lineCap = "round"; x.beginPath(); x.moveTo(...e.a); x.lineTo(...e.b); x.stroke(); x.globalAlpha = 1; }
           this.capsule(x, ...e.a, ...e.b, e.r, e.r, fresh ? "#fff" : (e.type === "drop" ? "#8a6ad0" : a.accent), CREAM);
           if (e.letter) {
@@ -423,7 +447,7 @@ const Render = {
           break;
         }
         case "rollover": {
-          if (e.id in lights && !st.lit) ring(e.x, e.y, e.r - 2);
+          if (lit && !st.lit) ring(e.x, e.y, e.r - 2); else if (side && !st.lit) quiet(e.x, e.y, e.r - 2);
           x.fillStyle = "rgba(6,8,18,0.7)"; x.beginPath(); x.arc(e.x, e.y, e.r - 0.5, 0, Math.PI * 2); x.fill();   // the recessed insert
           x.strokeStyle = CREAM; x.lineWidth = 1.5; x.beginPath(); x.arc(e.x, e.y, e.r - 2, 0, Math.PI * 2); x.stroke();
           x.fillStyle = st.lit ? a.glow : "rgba(255,255,255,0.12)"; x.beginPath(); x.arc(e.x, e.y, e.r - 4.5, 0, Math.PI * 2); x.fill();
@@ -431,7 +455,7 @@ const Render = {
         }
         case "spinner": {
           const mx = (e.a[0] + e.b[0]) / 2, my = (e.a[1] + e.b[1]) / 2;
-          if (e.id in lights) ring(mx, my, 10);
+          if (lit) ring(mx, my, 10); else if (side) quiet(mx, my, 10);
           x.strokeStyle = a.rail; x.lineWidth = 1.5; x.beginPath(); x.moveTo(...e.a); x.lineTo(...e.b); x.stroke();
           const w = Math.abs(Math.cos(st.spin)) * 6 + 1;
           const vert = Math.abs(e.a[0] - e.b[0]) < 2;
@@ -441,14 +465,14 @@ const Render = {
         }
         case "orbit": {
           const mx = (e.a[0] + e.b[0]) / 2, my = (e.a[1] + e.b[1]) / 2;
-          const lit = e.id in lights || now - st.flash < 0.4;
-          x.fillStyle = lit ? a.glow : "rgba(255,255,255,0.18)"; x.globalAlpha = e.id in lights ? 0.5 + 0.5 * P : 1;
+          const on = lit || now - st.flash < 0.4;
+          if (side) quiet(mx, my, 10);
+          x.fillStyle = on ? a.glow : "rgba(255,255,255,0.18)"; x.globalAlpha = lit ? 0.5 + 0.5 * P : 1;
           x.beginPath(); x.moveTo(mx, my - 9); x.lineTo(mx + 9, my + 4); x.lineTo(mx - 9, my + 4); x.closePath(); x.fill(); x.globalAlpha = 1;
           break;
         }
         case "ramp": {
           const [m0, m1] = e.mouth, mx = (m0[0] + m1[0]) / 2, my = (m0[1] + m1[1]) / 2;
-          const lit = e.id in lights;
           x.fillStyle = lit ? a.glow : "rgba(255,244,214,0.35)";
           for (let i = 0; i < 3; i++) {
             const k = lit && !this.reduced ? ((this.clock * 2 + i / 3) % 1) : i / 3;
@@ -461,7 +485,7 @@ const Render = {
           break;
         }
         case "saucer": {
-          if (e.id in lights || st.lock) ring(e.x, e.y, e.r + 2);
+          if (lit || st.lock) ring(e.x, e.y, e.r + 2); else if (side) quiet(e.x, e.y, e.r + 2);
           x.fillStyle = "#07090f"; x.beginPath(); x.arc(e.x, e.y, e.r, 0, Math.PI * 2); x.fill();
           x.strokeStyle = st.lock ? a.glow : a.rail; x.lineWidth = 3; x.stroke();
           if (st.lock) { x.fillStyle = a.glow; x.fillRect(e.x - 4, e.y - 1, 8, 7); x.strokeStyle = a.glow; x.lineWidth = 1.8; x.beginPath(); x.arc(e.x, e.y - 2, 3, Math.PI, 0); x.stroke(); }
@@ -513,6 +537,20 @@ const Render = {
       }
       case "cloud":
         for (const [cx, cy, cr] of [[-5, 2, 5], [0, -3, 6], [6, 2, 4.5]]) { x.beginPath(); x.arc(cx * k, cy * k, cr * k, 0, Math.PI * 2); x.stroke(); } break;
+    }
+    x.restore();
+  },
+
+  // A whirlpool: arms of a spiral turning slowly into its eye. Faint, so it
+  // reads as water moving, never as a rail.
+  paintWhirlpool(x, f, now) {
+    const { x: cx, y: cy, r } = f.pull, spin = this.reduced ? 0 : now * 1.6;
+    x.save(); x.translate(cx, cy);
+    x.strokeStyle = "rgba(170,245,255,0.28)"; x.lineWidth = 2; x.lineCap = "round";
+    for (let arm = 0; arm < 3; arm++) {
+      x.beginPath();
+      for (let i = 0; i <= 24; i++) { const u = i / 24, ang = spin + arm * 2.094 + u * 4.2, rr = r * (1 - u) * 0.95 + 4; i ? x.lineTo(Math.cos(ang) * rr, Math.sin(ang) * rr) : x.moveTo(Math.cos(ang) * rr, Math.sin(ang) * rr); }
+      x.stroke();
     }
     x.restore();
   },
@@ -590,11 +628,14 @@ const Render = {
     x.fillStyle = CREAM; x.strokeStyle = CREAM; x.lineWidth = 2.4;
     const fake = { x: 0, y: 0, r: 13, look: kind };
     switch (kind) {
-      case "bell": case "idol": case "shell": case "gear": case "puff": {
+      case "bell": case "idol": case "shell": case "gear": case "puff": case "leaf": {
         const prev = this.art; this.art = a;
         this.paintBumper(x, Object.assign(fake, { look: kind === "puff" ? "cloud" : kind }), 1, false, 0);
         this.art = prev; break;
       }
+      case "totem": for (let i = 0; i < 3; i++) { x.fillStyle = i === 1 ? "#5f8b4c" : "#b9a888"; x.fillRect(-7, -13 + i * 9, 14, 8); x.fillStyle = a.ink; x.fillRect(-4, -11 + i * 9, 2, 2); x.fillRect(2, -11 + i * 9, 2, 2); } break;
+      case "eye": x.fillStyle = BRASS; x.beginPath(); x.ellipse(0, 0, 13, 8, 0, 0, 7); x.fill(); x.fillStyle = CREAM; x.beginPath(); x.ellipse(0, 0, 10, 5.5, 0, 0, 7); x.fill(); x.fillStyle = a.glow; x.beginPath(); x.arc(0, 0, 4, 0, 7); x.fill(); x.fillStyle = a.ink; x.beginPath(); x.arc(0, 0, 1.8, 0, 7); x.fill(); break;
+      case "whirl": x.strokeStyle = a.glow; x.lineWidth = 2.4; x.beginPath(); for (let i = 0; i <= 30; i++) { const g = i / 30 * Math.PI * 4, r = 12 * (1 - i / 34); i ? x.lineTo(Math.cos(g) * r, Math.sin(g) * r) : x.moveTo(r, 0); } x.stroke(); break;
       case "star": x.fillStyle = CORAL; x.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? 5.5 : 13, g = -Math.PI / 2 + i * Math.PI / 5; x.lineTo(Math.cos(g) * r, Math.sin(g) * r); } x.closePath(); x.fill(); break;
       case "dragon": x.fillStyle = "#b8473c"; x.beginPath(); x.arc(0, 2, 10, 0, Math.PI * 2); x.fill(); x.beginPath(); x.moveTo(-8, -4); x.lineTo(-12, -13); x.lineTo(-2, -7); x.moveTo(8, -4); x.lineTo(12, -13); x.lineTo(2, -7); x.fill(); x.fillStyle = CREAM; x.beginPath(); x.arc(-4, 0, 2, 0, 7); x.arc(4, 0, 2, 0, 7); x.fill(); break;
       case "ramp": case "rainbow": {
@@ -619,6 +660,8 @@ const Render = {
       case "current": case "wind": x.strokeStyle = a.glow; for (let i = 0; i < 3; i++) { x.beginPath(); x.moveTo(-11, 8 - i * 7); x.quadraticCurveTo(-4, 3 - i * 7, 0, 8 - i * 7); x.quadraticCurveTo(5, 13 - i * 7, 11, 8 - i * 7); x.stroke(); } x.fillStyle = CREAM; x.beginPath(); x.moveTo(0, -14); x.lineTo(5, -8); x.lineTo(-5, -8); x.fill(); break;
       case "lock": x.fillStyle = a.glow; x.fillRect(-9, -2, 18, 14); x.strokeStyle = a.glow; x.lineWidth = 3; x.beginPath(); x.arc(0, -3, 6, Math.PI, 0); x.stroke(); x.fillStyle = a.ink; x.fillRect(-1.5, 3, 3, 5); break;
       case "multiball": this.paintBall(x, -5, 2, 0.9); this.paintBall(x, 6, -3, 0.9); break;
+      case "keep": x.fillStyle = "#8a7a64"; x.fillRect(-10, -8, 20, 20); for (let i = 0; i < 3; i++) x.fillRect(-10 + i * 8, -13, 4, 6); x.fillStyle = a.ink; x.beginPath(); x.moveTo(-5, 12); x.lineTo(-5, 2); x.arc(0, 2, 5, Math.PI, 0); x.lineTo(5, 12); x.fill(); x.fillStyle = BRASS; x.fillRect(-1, 4, 2, 2); break;
+      case "moat": x.strokeStyle = a.glow; x.lineWidth = 2.6; x.beginPath(); x.arc(0, 1, 10, Math.PI * 0.6, Math.PI * 2.25); x.stroke(); x.fillStyle = a.glow; x.beginPath(); x.moveTo(-2, 8); x.lineTo(-9, 12); x.lineTo(-7, 4); x.fill(); x.strokeStyle = CREAM; x.lineWidth = 1.5; x.beginPath(); x.moveTo(-5, 0); x.quadraticCurveTo(-2, -3, 0, 0); x.quadraticCurveTo(2, 3, 5, 0); x.stroke(); break;
       case "key": x.strokeStyle = BRASS; x.lineWidth = 3; x.beginPath(); x.arc(-5, 0, 6, 0, 7); x.moveTo(1, 0); x.lineTo(13, 0); x.moveTo(9, 0); x.lineTo(9, 5); x.moveTo(13, 0); x.lineTo(13, 5); x.stroke(); break;
       case "spell": x.fillStyle = CREAM; x.fillRect(-13, -8, 12, 16); x.fillRect(1, -8, 12, 16); x.fillStyle = a.ink; x.font = "800 12px 'Baloo 2', sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("A", -7, 1); x.fillText("B", 7, 1); break;
       case "score": default: x.fillStyle = BRASS; x.beginPath(); x.arc(0, 0, 12, 0, 7); x.fill(); x.fillStyle = a.ink; x.font = "800 12px 'Baloo 2', sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("123".slice(0, 2), 0, 1);

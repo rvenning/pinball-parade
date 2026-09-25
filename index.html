@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="gk-version" content="5" data-date="2026-09-24" data-kit="1.10.1">
+<meta name="gk-version" content="6" data-date="2026-09-25" data-kit="1.10.1">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Pinball Parade — Let the story roll</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#121c3a">
-<meta name="description" content="A storybook pinball adventure. Five mechanical worlds, twenty chapters, three objectives in each — ring the bells, lower the drawbridge, wake the dragon — plus free play and a Daily Parade for the family leaderboard.">
+<meta name="description" content="A storybook pinball adventure. Five mechanical worlds, twenty chapters, each a little story in phases — ring the bells, lower the drawbridge, wake the dragon — plus free play and a Daily Parade for the family leaderboard.">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -132,7 +132,7 @@
   </div>
 </div>
 
-<!-- Chapter card: the three objectives, before play -->
+<!-- Chapter card: the story in phases, before play -->
 <div class="modal" id="modal-chapter">
   <div class="modal-box chapter-card">
     <div class="cc-kicker" id="cc-kicker"></div>
@@ -140,6 +140,7 @@
     <p class="cc-story" id="cc-story"></p>
     <div class="cc-objs" id="cc-objs"></div>
     <button class="btn big green wide" id="cc-play">▶ Play</button>
+    <button class="btn blue wide" id="cc-fresh" style="display:none">↻ Start the story over</button>
     <button class="btn grey wide" onclick="GK.UI.closeModal('modal-chapter')">Not yet</button>
   </div>
 </div>
@@ -148,9 +149,8 @@
 <div class="modal" id="modal-pause">
   <div class="modal-box">
     <h2>⏸ Paused</h2>
-    <p>The ball is waiting right where you left it.</p>
+    <p id="pause-story">The ball is waiting right where you left it.</p>
     <button class="btn big green wide" onclick="Play.resume()">▶ Keep playing</button>
-    <button class="btn blue wide" id="btn-finish" onclick="App.finishNow()" style="display:none">🏁 Finish the chapter</button>
     <div class="row-btns2">
       <button class="btn grey" onclick="App.restart()">↻ Restart</button>
       <button class="btn grey" onclick="App.exitGame()">🚪 Leave</button>

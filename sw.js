@@ -1,6 +1,6 @@
 // Pinball Parade service worker — network-first, cache fallback.
 // Bump with `node lib/tools/stamp-version.js . --bump`, never by hand.
-const CACHE = "pinball-parade-v8";
+const CACHE = "pinball-parade-v9";
 const SHELL = [
   ".",
   "index.html",

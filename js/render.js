@@ -112,7 +112,12 @@ const Render = {
 
   drawBase(x, t) {
     const img = Assets.background(t.id);
-    if (img) { x.drawImage(img, 0, 0, TABLE_W, TABLE_H); return; }
+    if (img) {
+      x.drawImage(img, 0, 0, TABLE_W, TABLE_H);
+      const shade=x.createRadialGradient(190,390,70,190,390,330);
+      shade.addColorStop(0,'rgba(6,12,28,.28)'); shade.addColorStop(1,'rgba(6,12,28,0)');
+      x.fillStyle=shade; x.fillRect(0,0,TABLE_W,TABLE_H); return;
+    }
     const a = ART[t.id];
     const g = x.createLinearGradient(0, 0, 0, TABLE_H);
     g.addColorStop(0, a.felt[0]); g.addColorStop(1, a.felt[1]);
@@ -217,6 +222,12 @@ const Render = {
     x.strokeStyle = "rgba(0,0,0,0.18)"; x.lineWidth = 24; x.stroke();
     x.strokeStyle = "rgba(246,236,214,0.12)"; x.lineWidth = 18; x.stroke();
     x.setLineDash([2, 10]); x.strokeStyle = "rgba(246,236,214,0.22)"; x.lineWidth = 18; x.stroke(); x.setLineDash([]);
+    if(e.id==='rainbow') {
+      ['#e88c91','#e7bd76','#9bcfa6','#87bfe3','#b7a4df'].forEach((col,j)=>{
+        x.beginPath(); P.forEach(([px,py],i)=> i ? x.lineTo(px+(j-2)*3,py) : x.moveTo(px+(j-2)*3,py));
+        x.strokeStyle=col; x.globalAlpha=.45; x.lineWidth=3; x.stroke();
+      }); x.globalAlpha=1;
+    }
     x.strokeStyle = a.rail; x.lineWidth = 2.5;
     for (const side of [-1, 1]) {
       x.beginPath();
@@ -256,7 +267,7 @@ const Render = {
     x.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     // surround: the cabinet the table sits in
     const g = x.createLinearGradient(0, 0, 0, this.H);
-    g.addColorStop(0, a.wood[0]); g.addColorStop(1, a.wood[1]);
+    g.addColorStop(0, '#182238'); g.addColorStop(1, '#070c17');
     x.fillStyle = g; x.fillRect(0, 0, this.W, this.H);
 
     const [shx, shy] = (this.reduced || !this.layers.fx) ? [0, 0] : Fx.shakeOffset();
@@ -284,14 +295,28 @@ const Render = {
   drawToys(x, sim) {
     Art.atmosphere(x, sim, this.clock);
     for (const e of sim.table.elements) if (e.type === "toy") {
-      const awake = sim.S.el[e.id].awake;
+        const awake = sim.S.el[e.id].awake || (sim.cfg?.mode === 'free') || !!(e.follow && sim.S.el[e.follow].moving);
       // a toy riding a mover (the flying dragon) travels with it
       const [ox, oy] = e.follow ? moverOffset(sim.table.byId[e.follow], sim.S.el[e.follow]) : [0, 0];
-      const img = Assets.character(e.look, awake);
+        const img = Assets.character(e.look, awake) || (e.look === 'dragon' ? Assets.mascot('castle') : null);
       x.save(); x.translate(ox, oy);
-      if (img) x.drawImage(img, e.x - e.w / 2, e.y - e.h / 2, e.w, e.h);
-      else if (e.look === "dragon") Art.dragon(x, e, awake, e.follow && sim.S.el[e.follow].moving, this.clock);
-      else if (e.look === "automaton") Art.automaton(x, e, awake, this.clock);
+        if (img && e.look === 'dragon') {
+          const hit=Math.max(0,1-(sim.S.t-sim.S.el[e.follow]?.flash)/.65);
+          const breath=this.reduced?0:Math.sin(this.clock*2.4);
+          x.translate(e.x,e.y-7+(this.reduced?0:breath*1.4));
+          x.rotate(this.reduced?0:Math.sin(this.clock*1.2)*.035-hit*.12);
+          x.scale(1+breath*.012,1-breath*.012);
+          Art.oval(x,0,34,25,4,'rgba(0,0,0,.32)');
+          x.drawImage(img,-40,-43,80,80);
+          if(hit>0) { x.globalAlpha=hit; Art.path(x,[[25,-19],[34,-24],[31,-19],[43,-17],[30,-14]],'#ffd486',null); }
+        }
+        else if (img) x.drawImage(img, e.x - e.w / 2, e.y - e.h / 2, e.w, e.h);
+        else if (e.look === "dragon") Art.dragon(x, e, awake, e.follow && sim.S.el[e.follow].moving, this.clock, Math.max(0,1-(sim.S.t-sim.S.el[e.follow]?.flash)/.65));
+        else if (e.look === "automaton") {
+          const hit=Math.max(0,1-(sim.S.t-sim.S.el.toybox?.flash)/.65);
+          if(!this.reduced) x.translate(0,-hit*5);
+          Art.automaton(x, e, awake, this.clock);
+        }
       x.restore();
     }
   },
@@ -328,7 +353,7 @@ const Render = {
       x.save(); x.translate(1.5, 3); x.globalAlpha = 0.35;
       this.capsule(x, f.x, f.y, tx, ty, f.r0, f.r1, "#000", null); x.restore();
       this.capsule(x, f.x, f.y, tx, ty, f.r0, f.r1, CORAL, null);
-      this.capsule(x, f.x, f.y, tx, ty, f.r0 - 2.2, f.r1 - 2.2, CREAM, null);
+      this.capsule(x, f.x, f.y, tx, ty, f.r0 - 2.2, f.r1 - 2.2, Art.metal(x,f.y,12,'#fffbea','#c3ab83'), null);
       x.fillStyle = BRASS; x.beginPath(); x.arc(f.x, f.y, 4, 0, Math.PI * 2); x.fill();
     });
   },
@@ -408,7 +433,8 @@ const Render = {
           if (down) { x.strokeStyle = "rgba(0,0,0,0.5)"; x.lineWidth = 3; x.lineCap = "round"; x.beginPath(); x.moveTo(...e.a); x.lineTo(...e.b); x.stroke(); break; }
           if (side) { x.strokeStyle = "rgba(246,236,214,0.4)"; x.lineWidth = e.r * 2 + 6; x.lineCap = "round"; x.setLineDash([3, 5]); x.beginPath(); x.moveTo(...e.a); x.lineTo(...e.b); x.stroke(); x.setLineDash([]); }
           if (lit) { x.strokeStyle = a.glow; x.globalAlpha = 0.4 + 0.5 * P; x.lineWidth = e.r * 2 + 8; x.lineCap = "round"; x.beginPath(); x.moveTo(...e.a); x.lineTo(...e.b); x.stroke(); x.globalAlpha = 1; }
-          this.capsule(x, ...e.a, ...e.b, e.r, e.r, fresh ? "#fff" : (e.type === "drop" ? "#8a6ad0" : a.accent), CREAM);
+            this.capsule(x, ...e.a, ...e.b, e.r+1, e.r+1, '#171827', '#171827');
+            this.capsule(x, ...e.a, ...e.b, e.r, e.r, fresh ? "#fff" : (e.type === "drop" ? "#8a6ad0" : a.accent), a.railHi);
           if (e.letter) {
             const mx = (e.a[0] + e.b[0]) / 2, my = (e.a[1] + e.b[1]) / 2;
             const vert = Math.abs(e.a[0] - e.b[0]) < 2;
@@ -431,7 +457,7 @@ const Render = {
           x.strokeStyle = a.rail; x.lineWidth = 1.5; x.beginPath(); x.moveTo(...e.a); x.lineTo(...e.b); x.stroke();
           const w = Math.abs(Math.cos(this.reduced ? 0 : st.spin)) * 6 + 1;
           const vert = Math.abs(e.a[0] - e.b[0]) < 2;
-          x.fillStyle = CREAM;
+          x.fillStyle = Art.metal(x,my,11);
           if (vert) x.fillRect(mx - w / 2, my - 11, w, 22); else x.fillRect(mx - 11, my - w / 2, 22, w);
           break;
         }
@@ -457,9 +483,10 @@ const Render = {
           break;
         }
         case "saucer": {
+            Art.pocket(x,e,st,now);
           if (lit || st.lock) ring(e.x, e.y, e.r + 2); else if (side) quiet(e.x, e.y, e.r + 2);
-          x.fillStyle = "#07090f"; x.beginPath(); x.arc(e.x, e.y, e.r, 0, Math.PI * 2); x.fill();
-          x.strokeStyle = st.lock ? a.glow : a.rail; x.lineWidth = 3; x.stroke();
+            x.beginPath(); x.arc(e.x, e.y, e.r, 0, Math.PI * 2);
+            x.strokeStyle = st.lock ? a.glow : a.rail; x.lineWidth = 1; x.stroke();
           if (st.lock) { x.fillStyle = a.glow; x.fillRect(e.x - 4, e.y - 1, 8, 7); x.strokeStyle = a.glow; x.lineWidth = 1.8; x.beginPath(); x.arc(e.x, e.y - 2, 3, Math.PI, 0); x.stroke(); }
           // A slow orbit of pin lights makes a live capture pocket distinct
           // from a painted hole, without obscuring the ball in its centre.
@@ -495,10 +522,12 @@ const Render = {
   paintBumper(x, e, squash, fresh, now) {
     const a = this.art, r = e.r * squash;
     x.fillStyle = "rgba(0,0,0,0.35)"; x.beginPath(); x.arc(e.x + 2, e.y + 3.5, e.r, 0, Math.PI * 2); x.fill();
-    x.fillStyle = a.rail; x.beginPath(); x.arc(e.x, e.y, r, 0, Math.PI * 2); x.fill();
+    Art.bezel(x,e,r);
     const cap = x.createRadialGradient(e.x - r * 0.35, e.y - r * 0.35, 1, e.x, e.y, r * 0.9);
     cap.addColorStop(0, fresh ? "#ffffff" : a.enamel2); cap.addColorStop(1, fresh ? a.enamel2 : a.enamel);
     x.fillStyle = cap; x.beginPath(); x.arc(e.x, e.y, r * 0.8, 0, Math.PI * 2); x.fill();
+    x.strokeStyle='rgba(255,245,208,.65)'; x.lineWidth=1;
+    x.beginPath(); x.arc(e.x,e.y,r*.72,Math.PI*1.1,Math.PI*1.8); x.stroke();
     x.save(); x.translate(e.x, e.y);
     const ink = e.look === "cloud" ? "#6a80bd" : "#fff4dc";
     x.fillStyle = ink; x.strokeStyle = ink; x.lineWidth = 2; x.lineCap = "round";
@@ -508,6 +537,10 @@ const Render = {
         x.beginPath(); x.moveTo(-7 * k, 5 * k); x.quadraticCurveTo(-7 * k, -9 * k, 0, -9 * k); x.quadraticCurveTo(7 * k, -9 * k, 7 * k, 5 * k); x.closePath(); x.fill();
         x.beginPath(); x.arc(0, 7 * k, 2.2 * k, 0, Math.PI * 2); x.fill(); break;
       case "idol": {
+        x.fillStyle=Art.metal(x,0,14,'#ffe7a5','#6b602d');
+        x.beginPath(); x.roundRect(-11*k,-12*k,22*k,25*k,5*k); x.fill();
+        x.strokeStyle='#75622f'; x.lineWidth=1;
+        x.strokeRect(-8*k,-10*k,16*k,20*k);
         x.fillStyle = "#6b4a14"; x.fillRect(-8 * k, -5 * k, 5 * k, 3 * k); x.fillRect(3 * k, -5 * k, 5 * k, 3 * k);
         const awake = this._sim && this._sim.S.el.idol && this._sim.S.el.idol.awake;
         x.fillStyle = awake ? this.art.glow : "#6b4a14"; x.beginPath(); x.arc(0, 4 * k, 3 * k, 0, Math.PI * 2); x.fill(); break;
@@ -522,8 +555,11 @@ const Render = {
         for (let i = 0; i < 8; i++) { x.rotate(Math.PI / 4); x.fillRect(-2 * k, -11 * k, 4 * k, 5 * k); }
         x.beginPath(); x.arc(0, 0, 3.5 * k, 0, Math.PI * 2); x.fill(); break;
       }
-      case "cloud":
-        for (const [cx, cy, cr] of [[-5, 2, 5], [0, -3, 6], [6, 2, 4.5]]) { x.beginPath(); x.arc(cx * k, cy * k, cr * k, 0, Math.PI * 2); x.stroke(); } break;
+      case "cloud": {
+        const cloud=x.createLinearGradient(0,-10*k,0,8*k); cloud.addColorStop(0,'#fff'); cloud.addColorStop(1,'#b8c9eb');
+        for (const [cx, cy, cr] of [[-6,2,6],[0,-3,8],[7,2,6]]) Art.oval(x,cx*k,cy*k,cr*k,cr*k,cloud);
+        x.strokeStyle='#7f98c1'; x.lineWidth=1; x.beginPath(); x.moveTo(-8*k,7*k); x.quadraticCurveTo(0,10*k,9*k,7*k); x.stroke(); break;
+      }
     }
     x.restore();
   },

@@ -54,6 +54,9 @@
   else if (shot === "book") { App.showBook(); done(); }
   else if (shot === "world") { App.showWorld(+(q.get("w") || 0)); done(); }
   else if (shot === "chapter") { App.showWorld(0); App.chapterCard(+(q.get("c") || 1)); done(); }
+  else if (shot === 'free-results') {
+    App.showResults(freePlayConfig('castle'), {score:98480,stars:0,stats:{},seconds:180}); done();
+  }
   else if (shot === "results") {
     const cfg = Object.assign({ mode: "chapter" }, CHAPTERS[2]);
     const lost = q.get("lost") === "1", n = cfg.phases.length;

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="gk-version" content="8" data-date="2026-09-28" data-kit="1.10.1">
+<meta name="gk-version" content="9" data-date="2026-09-28" data-kit="1.10.1">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Pinball Parade — Pick a table and play</title>
 <link rel="manifest" href="manifest.json">
@@ -88,9 +88,9 @@
     </div>
   </header>
   <div class="parade-bar" id="parade-bar" aria-label="Parade meter"><span></span></div>
+  <div class="announcer"><div class="banner" id="banner" aria-live="polite"></div></div>
   <div class="game-stage" id="game-stage">
     <canvas id="cv" aria-label="The pinball table"></canvas>
-    <div class="banner" id="banner" aria-live="polite"></div>
     <span class="save-lamp" id="save-lamp">Ball save</span>
     <button class="btn-launch" id="btn-launch" aria-label="Launch the ball">Launch<small>tap, or hold for more</small></button>
     <div class="landscape-note">Turn me the other way up — the table is tall!</div>

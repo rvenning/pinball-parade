@@ -270,9 +270,11 @@ const App = {
       b.setAttribute("aria-label", `${w.name}, ${best ? `best score ${fmt(best)}` : "no score yet"}. Play`);
       b.innerHTML = `<span class="wc-art"></span>
         <span class="wc-body">
-          <span class="wc-n">Table ${i + 1} · Play ▶</span>
+            <span class="wc-n">Table 0${i + 1}</span>
           <span class="wc-name">${esc(w.name)}</span>
+            <span class="wc-desc">${['Ring the bells. Chase the dragon.','Wake the idol. Climb the temple.','Ride the currents. Find the treasure.','Spin the gears. Beat the clock.','Catch the breeze. Ride the rainbow.'][i]}</span>
           <span class="wc-stars">${best ? `Best ${fmt(best)}` : "Set your first high score"}</span>
+            <span class="wc-play">Play table <span aria-hidden="true">→</span></span>
         </span>`;
       const art = b.querySelector(".wc-art");
       const img = Assets.worldCard(w.table);
@@ -425,9 +427,11 @@ const App = {
     const bc = this.el("chip-bonus");
     if (bc) { bc.querySelector(".chip-n").textContent = bv; bc.classList.toggle("done", S.bonus.done); }
     const combo = this.el("hud-combo");
-    if (combo) combo.textContent = comboSeconds ? `Combo ×${S.combo.chain} · ${comboSeconds}s` : "";
+      if (combo) combo.textContent = comboSeconds ? `Combo ×${S.combo.chain} · ${comboSeconds}s` : sim.readyBall() ? 'Hold launch for more power' : S.t < S.saveUntil ? 'Ball save is on' : 'Link different shots for combos';
     this.el("hud-balls").innerHTML = Array.from({ length: cfg.balls || 3 }, (_, i) => `<i class="${i < S.ballsLeft ? "on" : ""}"></i>`).join("");
     this.el("hud-score").textContent = fmt(S.score);
+      this.el('hud-balls').setAttribute('aria-label', `${S.ballsLeft} balls remaining`);
+      this.el('hud-balls').dataset.label = `BALL ${Math.min(cfg.balls || 3, S.ballNo || 1)} / ${cfg.balls || 3}`;
     const bar = this.el("parade-bar");
     const on = S.t < S.parade.until;
     bar.classList.toggle("on", on);
@@ -514,7 +518,7 @@ const App = {
       note.textContent = `Your best today: ${fmt(p.dailyScore)}. A new parade comes tomorrow.`;
     }
     again.onclick = () => { Sfx.click(); cfg.mode === "chapter" ? this.startChapter(cfg.idx) : Play.start(cfg); };
-    again.textContent = cfg.mode === "chapter" && !res.won ? "↻ Start over" : "↻ Again";
+    again.textContent = cfg.mode === "chapter" && !res.won ? "↻ Start over" : "Play again";
     this.el("res-book").onclick = () => { Sfx.click(); this.showBook(); };
     this.showScreen("results");
   },

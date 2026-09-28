@@ -43,8 +43,10 @@ body {
 h1, h2, h3 { font-weight: 800; }
 .nudge { font-size: 15px; line-height: 1.45; color: var(--dim); margin: 6px 0 14px; }
 
-/* gk-base .screen centres its children; stretch so cards and the stage fill */
-.screen { align-items: stretch; justify-content: flex-start; }
+/* Keep gamekit's centred screen columns. The play stage and HUD set their
+   own width to 100%, so they still fill the viewport. */
+.screen { scrollbar-width: none; }
+.screen::-webkit-scrollbar { display: none; }
 
 /* ------------------------------------------------------------- buttons -- */
 .btn { color: #1a1206; }
@@ -130,7 +132,7 @@ h1, h2, h3 { font-weight: 800; }
 .wc-name { font-size: 20px; font-weight: 800; color: var(--cream); line-height: 1.15; }
 .wc-stars { font-size: 15px; color: var(--brass-lite); letter-spacing: .04em; }
 .wc-stars i, .ch-stars i { font-style: normal; color: rgba(255,255,255,.18); }
-.lb-tabs { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 12px; }
+.lb-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 2px 12px; }
 .lb-tab { flex: 0 0 auto; padding: 8px 12px; border: 1px solid rgba(217,164,65,.45); border-radius: 999px; background: rgba(255,255,255,.08); color: var(--cream); font: 700 14px 'Baloo 2', system-ui, sans-serif; cursor: pointer; }
 .lb-tab.active { background: var(--brass-lite); color: #121c3a; }
 .lb-rows .lb-row { grid-template-columns: 40px 42px minmax(0, 1fr) auto; }

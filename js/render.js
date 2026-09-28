@@ -43,7 +43,8 @@ const Render = {
     this.stage = cv.parentElement;
     this.ctx = cv.getContext("2d");
     this.reduced = !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
-    if (window.matchMedia) matchMedia("(prefers-reduced-motion: reduce)").addEventListener?.("change", (e) => { this.reduced = e.matches; });
+    Art.motion = this.reduced ? 0 : 1;
+    if (window.matchMedia) matchMedia("(prefers-reduced-motion: reduce)").addEventListener?.("change", (e) => { this.reduced = e.matches; Art.motion = e.matches ? 0 : 1; });
     const q = new URLSearchParams(location.search);
     if (q.get("layers")) for (const l of LAYERS) this.layers[l] = q.get("layers").split(",").includes(l);
     if (q.get("hide")) for (const l of q.get("hide").split(",")) if (l in this.layers) this.layers[l] = false;
@@ -281,6 +282,7 @@ const Render = {
   },
 
   drawToys(x, sim) {
+    Art.atmosphere(x, sim, this.clock);
     for (const e of sim.table.elements) if (e.type === "toy") {
       const awake = sim.S.el[e.id].awake;
       // a toy riding a mover (the flying dragon) travels with it
@@ -288,40 +290,10 @@ const Render = {
       const img = Assets.character(e.look, awake);
       x.save(); x.translate(ox, oy);
       if (img) x.drawImage(img, e.x - e.w / 2, e.y - e.h / 2, e.w, e.h);
-      else if (e.look === "dragon") this.paintDragon(x, e, awake, e.follow && sim.S.el[e.follow].moving);
-      else if (e.look === "automaton") this.paintAutomaton(x, e, awake);
+      else if (e.look === "dragon") Art.dragon(x, e, awake, e.follow && sim.S.el[e.follow].moving, this.clock);
+      else if (e.look === "automaton") Art.automaton(x, e, awake, this.clock);
       x.restore();
     }
-  },
-
-  paintDragon(x, e, awake, flying) {
-    const bob = flying ? Math.sin(this.clock * 7) * 4 : awake ? Math.sin(this.clock * 3) * 2 : Math.sin(this.clock * 1.2) * 1;
-    x.save(); x.translate(e.x, e.y + bob); x.globalAlpha = awake ? 1 : 0.8;
-    x.fillStyle = "#b8473c";
-    x.beginPath(); x.ellipse(0, 6, 44, 18, 0, 0, Math.PI * 2); x.fill();                 // body
-    x.beginPath(); x.moveTo(-10, -4); x.lineTo(-40, -30); x.lineTo(-18, 2); x.fill();   // wing
-    x.beginPath(); x.moveTo(8, -4); x.lineTo(34, -32); x.lineTo(22, 2); x.fill();
-    x.beginPath(); x.arc(40, -2, 13, 0, Math.PI * 2); x.fill();                        // head
-    x.fillStyle = "#f3c26b";
-    x.beginPath(); x.ellipse(0, 12, 30, 7, 0, 0, Math.PI * 2); x.fill();               // belly
-    x.strokeStyle = "#2a0d0a"; x.lineWidth = 2; x.lineCap = "round";
-    if (awake) { x.fillStyle = "#fff4d6"; x.beginPath(); x.arc(44, -5, 3.2, 0, Math.PI * 2); x.fill(); x.fillStyle = "#2a0d0a"; x.beginPath(); x.arc(45, -5, 1.6, 0, Math.PI * 2); x.fill(); }
-    else { x.beginPath(); x.arc(44, -4, 3, 0.2, Math.PI - 0.2); x.stroke(); }
-    if (awake) { x.fillStyle = "rgba(255,170,60,0.8)"; for (let i = 0; i < 3; i++) { x.beginPath(); x.arc(58 + i * 7, -2 + Math.sin(this.clock * 9 + i) * 2, 4 - i, 0, Math.PI * 2); x.fill(); } }
-    else { x.fillStyle = "rgba(255,244,214,0.7)"; x.font = "bold 11px 'Baloo 2', sans-serif"; x.fillText("z", 54, -18 - (this.clock * 6 % 8)); }
-    x.restore();
-  },
-
-  paintAutomaton(x, e, awake) {
-    const step = awake ? Math.sin(this.clock * 6) * 3 : 0;
-    x.save(); x.translate(e.x, e.y);
-    x.fillStyle = "#3b5a8c"; x.fillRect(-12, -10 + Math.abs(step) * 0.3, 24, 30);
-    x.fillStyle = "#f3dcc0"; x.beginPath(); x.arc(0, -18, 9, 0, Math.PI * 2); x.fill();
-    x.fillStyle = CORAL; x.fillRect(-10, -30, 20, 6);
-    x.fillStyle = "#2a2a2a"; x.fillRect(-9, 20, 7, 10 + step); x.fillRect(2, 20, 7, 10 - step);
-    x.strokeStyle = BRASS; x.lineWidth = 3; x.save(); x.translate(15, 0); x.rotate(awake ? this.clock * 4 : 0);
-    x.beginPath(); x.moveTo(-6, 0); x.lineTo(6, 0); x.moveTo(0, -6); x.lineTo(0, 6); x.stroke(); x.restore();
-    x.restore();
   },
 
   drawLiveRails(x, sim) {
@@ -457,7 +429,7 @@ const Render = {
           const mx = (e.a[0] + e.b[0]) / 2, my = (e.a[1] + e.b[1]) / 2;
           if (lit) ring(mx, my, 10); else if (side) quiet(mx, my, 10);
           x.strokeStyle = a.rail; x.lineWidth = 1.5; x.beginPath(); x.moveTo(...e.a); x.lineTo(...e.b); x.stroke();
-          const w = Math.abs(Math.cos(st.spin)) * 6 + 1;
+          const w = Math.abs(Math.cos(this.reduced ? 0 : st.spin)) * 6 + 1;
           const vert = Math.abs(e.a[0] - e.b[0]) < 2;
           x.fillStyle = CREAM;
           if (vert) x.fillRect(mx - w / 2, my - 11, w, 22); else x.fillRect(mx - 11, my - w / 2, 22, w);
@@ -489,6 +461,14 @@ const Render = {
           x.fillStyle = "#07090f"; x.beginPath(); x.arc(e.x, e.y, e.r, 0, Math.PI * 2); x.fill();
           x.strokeStyle = st.lock ? a.glow : a.rail; x.lineWidth = 3; x.stroke();
           if (st.lock) { x.fillStyle = a.glow; x.fillRect(e.x - 4, e.y - 1, 8, 7); x.strokeStyle = a.glow; x.lineWidth = 1.8; x.beginPath(); x.arc(e.x, e.y - 2, 3, Math.PI, 0); x.stroke(); }
+          // A slow orbit of pin lights makes a live capture pocket distinct
+          // from a painted hole, without obscuring the ball in its centre.
+          if (st.lock) for (let i = 0; i < 3; i++) {
+            const ang = (this.reduced ? 0 : this.clock * 1.8) + i * Math.PI * 2 / 3;
+            x.fillStyle = a.glow; x.globalAlpha = 0.5 + 0.5 * P;
+            x.beginPath(); x.arc(e.x + Math.cos(ang) * (e.r + 5), e.y + Math.sin(ang) * (e.r + 5), 1.6, 0, Math.PI * 2); x.fill();
+          }
+          x.globalAlpha = 1;
           const n = S.balls.filter((b) => b.mode === "locked" && b.lockAt === e.id).length;
           for (let i = 0; i < n; i++) this.paintBall(x, e.x - 16 + i * 32, e.y + 20, 0.8);
           break;
@@ -501,6 +481,13 @@ const Render = {
           x.globalAlpha = 1;
           break;
         }
+      }
+      const age = now - st.flash;
+      if (!this.reduced && age >= 0 && age < 0.32 && ["bumper", "target", "drop", "orbit", "saucer"].includes(e.type)) {
+        const mx = e.a ? (e.a[0] + e.b[0]) / 2 : e.x;
+        const my = e.a ? (e.a[1] + e.b[1]) / 2 : e.y;
+        x.strokeStyle = a.glow; x.globalAlpha = 0.65 * (1 - age / 0.32); x.lineWidth = 2;
+        x.beginPath(); x.arc(mx, my, (e.r || 5) + 4 + age * 30, 0, Math.PI * 2); x.stroke(); x.globalAlpha = 1;
       }
     }
   },
@@ -531,7 +518,7 @@ const Render = {
       case "shell":
         for (let i = -2; i <= 2; i++) { x.beginPath(); x.moveTo(0, 8 * k); x.lineTo(i * 4 * k, -7 * k); x.stroke(); } break;
       case "gear": {
-        x.rotate(now * 1.5);
+        x.rotate(this.reduced ? 0 : now * 1.5);
         for (let i = 0; i < 8; i++) { x.rotate(Math.PI / 4); x.fillRect(-2 * k, -11 * k, 4 * k, 5 * k); }
         x.beginPath(); x.arc(0, 0, 3.5 * k, 0, Math.PI * 2); x.fill(); break;
       }

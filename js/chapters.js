@@ -470,8 +470,8 @@ const FREE_MOVING = { castle: ["dragonT"], workshop: ["pendulum", "clockDoor"], 
 const FREE_AWAKE = { castle: ["dragon"], workshop: ["automaton"] };
 function freePlayConfig(tableId) {
   return {
-    mode: "free", table: tableId, title: "Free Play", balls: 3, phases: [], bonus: null, scoreTarget: 0,
-    state: { savePost: false, kickback: "slow", ballSave: 6, lock: LOCKS[tableId], moving: FREE_MOVING[tableId] || [], awake: FREE_AWAKE[tableId] || [] },
+    mode: "free", table: tableId, title: WORLDS.find((w) => w.table === tableId).name, balls: 3, phases: [], bonus: null, scoreTarget: 0,
+    state: { savePost: false, kickback: "auto", ballSave: 10, lock: LOCKS[tableId], moving: FREE_MOVING[tableId] || [], awake: FREE_AWAKE[tableId] || [] },
   };
 }
 

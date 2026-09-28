@@ -157,6 +157,7 @@ Sim.prototype.fresh = function () {
     queue: [{ at: 0.35, what: "serve" }],
     locked: 0,
     parade: { meter: 0, until: 0, count: 0 },
+    combo: { last: "", until: 0, chain: 0 },
     // the story: which phase is current, and its own progress
     phase: 0, ph: null, told: false, reached: 0,
     bonus: { n: 0, seen: {}, done: false },
@@ -211,6 +212,18 @@ Sim.prototype.feedParade = function (amt) {
     this.emit("paradeStart", {});
     this.progress("parade", null, 1);
   }
+};
+
+// Alternate feature shots within eight seconds to build a capped jackpot.
+Sim.prototype.featureShot = function (id, x, y) {
+  if (this.cfg.mode !== "free") return;
+  const c = this.S.combo;
+  c.chain = this.S.t < c.until && c.last !== id ? Math.min(c.chain + 1, 5) : 1;
+  c.last = id;
+  c.until = this.S.t + 8;
+  const value = 1000 * c.chain;
+  this.add(value, x, y, "combo");
+  this.emit("combo", { chain: c.chain, value, x, y });
 };
 
 // ------------------------------------------------------------------ story --
@@ -680,6 +693,7 @@ Sim.prototype.sensors = function (b, px, py) {
         if (Physics.crossed(px, py, b.x, b.y, e.a[0], e.a[1], e.b[0], e.b[1]) && b.vx * e.dir[0] + b.vy * e.dir[1] > 0) {
           st.flash = t;
           this.add(PTS.orbit * this.boost(e.id), b.x, b.y);
+          this.featureShot(e.id, b.x, b.y);
           this.emit("orbit", { id: e.id, x: b.x, y: b.y });
           this.progress("orbit", e.id, 1);
         }
@@ -712,6 +726,7 @@ Sim.prototype.rollover = function (e, b) {
   if (members.every((m) => S.el[m.id].lit)) {
     for (const m of members) S.el[m.id].lit = false;
     this.add(PTS.lanes, e.x, e.y + 20, "lanes");
+    this.featureShot(e.group, e.x, e.y + 20);
     this.emit("lanes", { group: e.group, x: e.x, y: e.y });
     this.progress("lanes", e.id, 1);
   }
@@ -799,6 +814,7 @@ Sim.prototype.hit = function (id, b, kind) {
     const bank = this.table.elements.filter((e) => e.type === "drop" && e.group === el.group);
     if (bank.every((d) => S.el[d.id].down)) {
       this.add(PTS.bank, mx, my - 16, "bank");
+      this.featureShot(el.group, mx, my - 16);
       this.emit("bank", { group: el.group, x: mx, y: my });
       this.progress("bank", id, 1);
       // a bank that is a DOOR (keep) stays down until the story raises it
@@ -806,6 +822,7 @@ Sim.prototype.hit = function (id, b, kind) {
     }
   } else {
     this.add(PTS.target * boost, mx, my);
+    if (["dragonT", "key", "pearl1", "pearl2", "pearl3"].includes(id)) this.featureShot(el.group || id, mx, my);
     this.emit("target", { id, x: mx, y: my });
   }
   this.progress("hit", id, 1);
@@ -858,12 +875,14 @@ Sim.prototype.capture = function (e, b) {
     b.mode = "held"; b.until = S.t + 0.5 + 0.45 * k; b.heldAt = e.id;
     S.saveUntil = Math.max(S.saveUntil, S.t + 10);
     this.add(PTS.multiball, e.x, e.y - 18, "multiball");
+    this.featureShot(e.id, e.x, e.y - 18);
     this.emit("multiball", { id: e.id, x: e.x, y: e.y });
     this.progress("multiball", e.id, 1);
     return;
   }
   b.mode = "held"; b.until = S.t + (e.hold || 0.8); b.heldAt = e.id;
   this.add(PTS.saucer * this.boost(e.id), e.x, e.y - 18);
+  this.featureShot(e.id, e.x, e.y - 18);
   this.emit("saucer", { id: e.id, x: e.x, y: e.y });
 };
 
@@ -893,6 +912,7 @@ Sim.prototype.ride = function (b, dt) {
     this.S.stats.ramps++;
     const mult = (this.cfg.twist && this.cfg.twist.rampMult) || 1;
     this.add(PTS.ramp * mult * this.boost(ramp.id), b.x + 20, b.y, "ramp");
+    this.featureShot(ramp.id, b.x + 20, b.y);
     this.emit("ramp", { id: ramp.id, x: b.x, y: b.y });
     this.progress("ramp", ramp.id, 1);
     return;

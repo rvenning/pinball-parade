@@ -130,6 +130,10 @@ h1, h2, h3 { font-weight: 800; }
 .wc-name { font-size: 20px; font-weight: 800; color: var(--cream); line-height: 1.15; }
 .wc-stars { font-size: 15px; color: var(--brass-lite); letter-spacing: .04em; }
 .wc-stars i, .ch-stars i { font-style: normal; color: rgba(255,255,255,.18); }
+.lb-tabs { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 12px; }
+.lb-tab { flex: 0 0 auto; padding: 8px 12px; border: 1px solid rgba(217,164,65,.45); border-radius: 999px; background: rgba(255,255,255,.08); color: var(--cream); font: 700 14px 'Baloo 2', system-ui, sans-serif; cursor: pointer; }
+.lb-tab.active { background: var(--brass-lite); color: #121c3a; }
+.lb-rows .lb-row { grid-template-columns: 40px 42px minmax(0, 1fr) auto; }
 
 .world-art { border-radius: 18px; overflow: hidden; border: 2px solid rgba(217,164,65,.45); margin-top: 10px; background: #0b1226; }
 .world-art canvas, .world-art img { display: block; width: 100%; height: 150px; object-fit: cover; }
@@ -185,6 +189,7 @@ h1, h2, h3 { font-weight: 800; }
 .iconbtn.small { width: 42px; height: 42px; font-size: 17px; border-radius: 12px; flex: none; }
 .hud-chips { flex: 1; display: flex; gap: 6px; min-width: 0; }
 .hud-label { font-size: 15px; font-weight: 800; color: var(--cyan); align-self: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud-combo { align-self: center; margin-left: auto; white-space: nowrap; color: var(--brass-lite); font-size: 13px; font-weight: 800; }
 .chip { display: flex; align-items: center; gap: 4px; padding: 3px 8px 3px 4px; border-radius: 999px; background: rgba(255,255,255,.08); border: 1.5px solid rgba(255,255,255,.12); min-width: 0; }
 .chip.primary { border-color: rgba(217,164,65,.7); }
 .chip canvas { width: 26px; height: 26px; flex: none; }
@@ -270,7 +275,7 @@ h1, h2, h3 { font-weight: 800; }
 .res-note { font-size: 16px; line-height: 1.45; color: var(--text); margin: 8px 0 12px; }
 .res-actions { display: flex; flex-direction: column; }
 
-.lb-rows .lb-row { grid-template-columns: 40px 42px minmax(0, 1fr) auto auto auto; }
+.lb-rows .lb-row { grid-template-columns: 40px 42px minmax(0, 1fr) auto; }
 .howto { text-align: left; }
 .howto-list { margin: 8px 0 16px; padding-left: 20px; font-size: 15px; line-height: 1.5; color: var(--text); }
 .howto-list li { margin-bottom: 8px; }

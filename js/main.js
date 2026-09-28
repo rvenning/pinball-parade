@@ -98,6 +98,7 @@ const Play = {
         case "orbit": Sfx.rollover(true); break;
         case "lock": Sfx.lock(); App.banner("Ball locked!", 1300); break;
         case "multiball": Sfx.multiball(); App.banner("Two-ball parade!", 1800); if (!R) Fx.addShake(6); break;
+        case "combo": if (e.chain > 1) App.banner(`${e.chain}-shot combo!`, 1000, `+${fmt(e.value)}`); break;
         case "saved": Sfx.saved(); App.banner("Saved! Here it comes again", 1300); break;
         case "rescue": App.banner("Unstuck!", 900); break;
         case "ballLost": Sfx.ballLost(); App.banner(e.left > 0 ? `Oh well! ${e.left} ball${e.left === 1 ? "" : "s"} left` : "That was the last ball", 1400); break;
@@ -179,7 +180,7 @@ const App = {
     GK.UI.bindMenuClicks();
     GK.Profiles.init({
       storage: Storage, avatars: AVATARS,
-      meta: (p, prog) => `⭐ ${Progress.totalStars(prog)}/60 · 📖 world ${Math.max(1, Progress.worldsOpen(prog))}`,
+      meta: (p, prog) => `🏆 ${fmt(Progress.freeTotal(prog))} across five tables`,
       onEnter: (p) => { this.profile = p; this.showBook(); },
       addLabel: "New Player",
     });
@@ -206,22 +207,7 @@ const App = {
 
     const shot = new URLSearchParams(location.search).get("shot");
     GK.Debug.init({ storage: Storage, title: "PINBALL PARADE" })
-      .jump("chapter", CHAPTERS.length, (n) => this.startChapter(n - 1))
-      .action("complete phase", () => { const s = Play.sim; if (s && s.phaseSpec()) s.completePhase(); })
-      .action("multiball", () => { const s = Play.sim; if (s) { s.serve(true); s.serve(true); } })
-      // Real family play, against the designed bands: time and games to a
-      // chapter's first clear (still-running tallies marked "so far").
-      .action("pacing report", () => {
-        if (!this.profile) return alert("Pick a player first.");
-        const p = this.progress(), rows = [];
-        for (const c of CHAPTERS) {
-          const done = (p.pace || {})[c.idx], run = (p.paceRun || {})[c.idx], r = done || run;
-          if (!r) continue;
-          const band = PACE[c.pace];
-          rows.push(`${c.idx + 1}. ${c.title}: ${(r.secs / 60).toFixed(1)} min in ${r.games} game${r.games === 1 ? "" : "s"}${done ? "" : " so far"} (band ${band[0]}–${band[1]})`);
-        }
-        alert(rows.length ? `${this.profile.name}\n` + rows.join("\n") : "No chapters played yet.");
-      });
+      .action("multiball", () => { const s = Play.sim; if (s) { s.serve(true); s.serve(true); } });
     for (const l of LAYERS) GK.Debug.action(`${l} on/off`, () => { Render.setLayer(l, !Render.layers[l]); this.applyLayers(); });
     this.applyLayers();
     this.applyLogo();
@@ -263,7 +249,7 @@ const App = {
     } else {
       cont.style.display = "none";
       start.className = "btn big green";
-      start.textContent = "▶ Let the story roll";
+      start.textContent = "▶ Pick a table";
     }
   },
   play() { Sfx.init(); Sfx.click(); GK.Profiles.renderList(); this.showScreen("profiles"); },
@@ -274,46 +260,24 @@ const App = {
     if (!this.profile) return this.play();
     const p = this.progress();
     this.el("book-player").innerHTML = `${this.profile.avatar} <b>${esc(this.profile.name)}</b>`;
-    this.el("book-stars").textContent = `⭐ ${Progress.totalStars(p)}`;
-    const next = Progress.nextChapter(p);
-    const cont = this.el("btn-next");
-    if (next !== null) {
-      const c = CHAPTERS[next];
-      cont.innerHTML = `<span class="nb-k">${esc(WORLDS[c.world].name)} · Chapter ${c.n}</span><span class="nb-t">▶ ${esc(c.title)}</span>`;
-      cont.onclick = () => this.chapterCard(next);
-    } else {
-      cont.innerHTML = "🏆 Every story told — replay any chapter";
-      cont.onclick = () => this.showWorld(4);
-    }
-    const d = dailyConfig(todayKey());
-    const dailyOpen = Progress.worldOpen(p, WORLDS.findIndex((w) => w.table === d.table));
-    const dp = p.dailyDate === d.date ? p.dailyScore : 0;
-    this.el("daily").innerHTML = `
-      <button class="daily-card${dailyOpen ? "" : " locked"}" ${dailyOpen ? "" : "disabled"} onclick="App.startDaily()" aria-label="Daily Parade">
-        <span class="daily-kicker">Today's Daily Parade</span>
-        <span class="daily-name">${esc(WORLDS.find((w) => w.table === d.table).name)} · ${esc(d.twist.name)}</span>
-        <span class="daily-note">${dailyOpen ? `${esc(d.twist.note)}${dp ? ` · your best today ${fmt(dp)}` : ""}` : "Opens when you reach this world"}</span>
-      </button>`;
+    this.el("book-stars").textContent = `🏆 ${fmt(Progress.freeTotal(p))}`;
     const wrap = this.el("worlds");
     wrap.innerHTML = "";
     WORLDS.forEach((w, i) => {
-      const open = Progress.worldOpen(p, i);
-      const chs = CHAPTERS.filter((c) => c.world === i);
-      const got = chs.reduce((s, c) => s + ((p.chapters[c.idx] || {}).stars || 0), 0);
+      const best = (p.tables || {})[w.table] || 0;
       const b = document.createElement("button");
-      b.className = "world-card" + (open ? "" : " locked");
-      b.setAttribute("aria-label", `${w.name}${open ? `, ${got} of 12 stars` : ", locked"}`);
+      b.className = "world-card";
+      b.setAttribute("aria-label", `${w.name}, ${best ? `best score ${fmt(best)}` : "no score yet"}. Play`);
       b.innerHTML = `<span class="wc-art"></span>
         <span class="wc-body">
-          <span class="wc-n">World ${i + 1}</span>
+          <span class="wc-n">Table ${i + 1} · Play ▶</span>
           <span class="wc-name">${esc(w.name)}</span>
-          <span class="wc-stars">${open ? `${"★".repeat(Math.min(got, 12))}<i>${"★".repeat(12 - Math.min(got, 12))}</i>` : `🔒 ${esc(Progress.worldNeeds(p, i))}`}</span>
+          <span class="wc-stars">${best ? `Best ${fmt(best)}` : "Set your first high score"}</span>
         </span>`;
       const art = b.querySelector(".wc-art");
       const img = Assets.worldCard(w.table);
       art.appendChild(img ? img.cloneNode() : Render.thumbnail(TABLES[i], 150, 110));
-      if (open) b.onclick = () => { Sfx.click(); this.showWorld(i); };
-      else b.disabled = true;
+      b.onclick = () => this.startFree(w.table);
       wrap.appendChild(b);
     });
     this.showScreen("book");
@@ -402,7 +366,7 @@ const App = {
     const chips = this.el("hud-chips");
     chips.innerHTML = "";
     if (!cfg.phases.length) {
-      chips.innerHTML = `<span class="hud-label">Free play · ${esc(WORLDS.find((w) => w.table === cfg.table).name)}</span>`;
+      chips.innerHTML = `<span class="hud-label">${esc(WORLDS.find((w) => w.table === cfg.table).name)}</span><span class="hud-combo" id="hud-combo"></span>`;
     } else {
       chips.innerHTML = `<div class="chip phase" id="chip-phase"><span class="ph-icon"></span><span class="ph-text"><span class="ph-label"></span><span class="ph-sub"><span class="ph-pips"></span><span class="chip-n"></span></span></span></div>`;
       if (cfg.bonus) {
@@ -448,7 +412,8 @@ const App = {
     const p = sim.phaseSpec();
     const pv = p && S.ph ? this.goalText(p, S.ph, S) : "✓";
     const bv = cfg.bonus ? (S.bonus.done ? "✓" : this.goalText(cfg.bonus, S.bonus, S)) : "";
-    const sig = S.phase + ":" + pv + "|" + bv + "|" + S.ballsLeft + "|" + S.score + "|" + Math.round(S.parade.meter * 40) + (S.t < S.parade.until ? "P" : "") + "|" + (sim.readyBall() ? 1 : 0) + (S.t < S.saveUntil ? "s" : "");
+    const comboSeconds = S.combo && S.t < S.combo.until ? Math.ceil(S.combo.until - S.t) : 0;
+    const sig = S.phase + ":" + pv + "|" + bv + "|" + S.ballsLeft + "|" + S.score + "|" + Math.round(S.parade.meter * 40) + (S.t < S.parade.until ? "P" : "") + "|" + (sim.readyBall() ? 1 : 0) + (S.t < S.saveUntil ? "s" : "") + "|" + comboSeconds;
     if (sig === Play.chipSig) return;
     Play.chipSig = sig;
     const pc = this.el("chip-phase");
@@ -459,6 +424,8 @@ const App = {
     }
     const bc = this.el("chip-bonus");
     if (bc) { bc.querySelector(".chip-n").textContent = bv; bc.classList.toggle("done", S.bonus.done); }
+    const combo = this.el("hud-combo");
+    if (combo) combo.textContent = comboSeconds ? `Combo ×${S.combo.chain} · ${comboSeconds}s` : "";
     this.el("hud-balls").innerHTML = Array.from({ length: cfg.balls || 3 }, (_, i) => `<i class="${i < S.ballsLeft ? "on" : ""}"></i>`).join("");
     this.el("hud-score").textContent = fmt(S.score);
     const bar = this.el("parade-bar");
@@ -489,15 +456,13 @@ const App = {
   },
   restart() { const cfg = Play.cfg; Play.quit(); Play.start(cfg); },
   exitGame() {
-    const cfg = Play.cfg;
     Play.quit();
-    if (cfg.mode === "chapter") this.showWorld(cfg.world);
-    else if (cfg.mode === "free") this.showWorld(WORLDS.findIndex((w) => w.table === cfg.table));
-    else this.showBook();
+    this.showBook();
   },
 
   // -------------------------------------------------------------- results --
   showResults(cfg, res) {
+    const previousBest = ((this.progress().tables || {})[cfg.table] || 0);
     const p = Progress.record(this.progress(), cfg, res);
     this.save(p);
     const title = this.el("res-title"), note = this.el("res-note"), next = this.el("res-next"), again = this.el("res-again");
@@ -542,7 +507,7 @@ const App = {
       for (let i = 0; i < res.stars; i++) setTimeout(() => Sfx.star(i + 1), 350 + i * 260);
     } else if (cfg.mode === "free") {
       const best = p.tables[cfg.table];
-      title.textContent = res.score >= best && res.score > 0 ? "New best!" : "Game over";
+      title.textContent = res.score > previousBest ? "New best!" : "Game over";
       note.textContent = `Your best on this table: ${fmt(best)}. It counts on the family leaderboard.`;
     } else {
       title.textContent = "Daily Parade done";
@@ -550,7 +515,7 @@ const App = {
     }
     again.onclick = () => { Sfx.click(); cfg.mode === "chapter" ? this.startChapter(cfg.idx) : Play.start(cfg); };
     again.textContent = cfg.mode === "chapter" && !res.won ? "↻ Start over" : "↻ Again";
-    this.el("res-book").onclick = () => { Sfx.click(); cfg.mode === "chapter" ? this.showWorld(cfg.world) : this.showBook(); };
+    this.el("res-book").onclick = () => { Sfx.click(); this.showBook(); };
     this.showScreen("results");
   },
 
@@ -565,14 +530,19 @@ const App = {
   // ---------------------------------------------------------- leaderboard --
   showLeaderboard(silent) {
     if (!silent) Sfx.click();
-    const day = todayKey();
+    const table = this.leaderboardTable || WORLDS[0].table;
+    this.el("lb-tabs").replaceChildren(...WORLDS.map((w) => {
+      const b = document.createElement("button");
+      b.className = "lb-tab" + (w.table === table ? " active" : "");
+      b.textContent = w.name;
+      b.onclick = () => { this.leaderboardTable = w.table; this.showLeaderboard(true); };
+      return b;
+    }));
     GK.Profiles.renderLeaderboard("lb-rows", {
-      cols: (r) => `<span class="lb-stat">⭐ ${Progress.totalStars(r.progress)}</span>
-        <span class="lb-stat">🏆 ${fmt(Progress.freeTotal(r.progress))}</span>
-        <span class="lb-stat">📅 ${r.progress.dailyDate === day ? fmt(r.progress.dailyScore) : "–"}</span>`,
-      sort: (a, b) => Progress.freeTotal(b.progress) - Progress.freeTotal(a.progress) || Progress.totalStars(b.progress) - Progress.totalStars(a.progress),
+      cols: (r) => `<span class="lb-stat">🏆 ${fmt((r.progress.tables || {})[table] || 0)}</span>`,
+      sort: (a, b) => ((b.progress.tables || {})[table] || 0) - ((a.progress.tables || {})[table] || 0),
       meId: this.profile && this.profile.id,
-      empty: "Nobody has played yet — tap Free Play on any world!",
+      empty: "Nobody has played this table yet.",
     });
     this.showScreen("leaderboard");
   },

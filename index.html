@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="gk-version" content="6" data-date="2026-09-25" data-kit="1.10.1">
+<meta name="gk-version" content="7" data-date="2026-09-28" data-kit="1.10.1">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Pinball Parade — Let the story roll</title>
+<title>Pinball Parade — Pick a table and play</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#121c3a">
-<meta name="description" content="A storybook pinball adventure. Five mechanical worlds, twenty chapters, each a little story in phases — ring the bells, lower the drawbridge, wake the dragon — plus free play and a Daily Parade for the family leaderboard.">
+<meta name="description" content="Five lively pinball tables. Pick one, chase combos and multiball, and beat the family high scores.">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -26,9 +26,9 @@
   <div class="splash-inner">
     <div class="logo-art" id="logo-art" aria-hidden="true"></div>
     <h1 class="logo"><span class="l1">Pinball</span><span class="l2">Parade</span></h1>
-    <p class="tagline">Let the story roll.</p>
+    <p class="tagline">Pick a table. Chase a high score.</p>
     <button class="btn big green" id="btn-continue-as" style="display:none"></button>
-    <button class="btn big green" id="btn-start" onclick="App.play()">▶ Let the story roll</button>
+    <button class="btn big green" id="btn-start" onclick="App.play()">▶ Pick a table</button>
     <button class="btn ghost" onclick="App.howTo()">📖 How to play</button>
     <button class="btn ghost" id="btn-install" style="display:none">📲 Add to Home Screen</button>
     <div class="splash-foot">
@@ -48,7 +48,7 @@
   <div class="content"><div class="profile-list" id="profile-list"></div></div>
 </div>
 
-<!-- The book: worlds -->
+<!-- Table selection -->
 <div class="screen" id="screen-book">
   <header class="topbar sticky">
     <button class="iconbtn" onclick="App.play()" aria-label="Switch player">👥</button>
@@ -57,8 +57,7 @@
     <button class="iconbtn" onclick="App.showLeaderboard()" aria-label="Family leaderboard">🏆</button>
   </header>
   <div class="content">
-    <button class="btn big green wide next-btn" id="btn-next"></button>
-    <div id="daily"></div>
+    <p class="nudge">Choose any table. Three balls, one goal: beat your best score.</p>
     <div class="worlds" id="worlds"></div>
   </div>
 </div>
@@ -113,7 +112,7 @@
       <button class="btn green big" id="res-next" style="display:none"></button>
       <div class="row-btns2">
         <button class="btn blue" id="res-again">↻ Again</button>
-        <button class="btn grey" id="res-book">📖 Book</button>
+        <button class="btn grey" id="res-book">🎱 Tables</button>
       </div>
     </div>
   </div>
@@ -127,7 +126,8 @@
     <button class="btn-sound iconbtn" aria-label="Sound">🔊</button>
   </header>
   <div class="content">
-    <p class="nudge">Ranked on free play: every table's best score added up. ⭐ is story stars, 📅 is today's Daily Parade.</p>
+    <p class="nudge">Best score on each table.</p>
+    <div class="lb-tabs" id="lb-tabs"></div>
     <div class="lb-rows" id="lb-rows"></div>
   </div>
 </div>
@@ -166,10 +166,11 @@
     <ul class="howto-list">
       <li><b>Flippers:</b> hold the left or right side of the bottom of the table. Both thumbs at once works.</li>
       <li><b>Launch:</b> tap the glowing Launch button. Hold it longer to launch harder.</li>
-      <li><b>Every chapter has three things to do.</b> The first one opens the next chapter. Glowing rings show what to hit.</li>
-      <li><b>Stars:</b> one for the first job, one for the second, and one for the third job <i>or</i> a big score.</li>
+      <li><b>Pick any table:</b> three balls to score as many points as you can.</li>
+      <li><b>Combos:</b> alternate ramps, saucers, completed target banks and lanes within eight seconds for bigger jackpots.</li>
+      <li><b>Multiball:</b> shoot a lit saucer twice to release a second ball.</li>
       <li><b>Parade:</b> keep hitting bumpers to fill the meter — then everything scores double.</li>
-      <li><b>Free play</b> on any world you have reached is where the family high scores live.</li>
+      <li><b>High scores:</b> every table has its own family leaderboard.</li>
       <li>Keys: ← → or A D for flippers, Space to launch, P to pause.</li>
     </ul>
     <button class="btn green wide" onclick="GK.UI.closeModal('modal-howto')">Got it</button>
